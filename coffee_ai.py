@@ -36,7 +36,11 @@ class AIWorker(QThread):
                 req = urllib.request.Request(
                     PROXY_URL,
                     data=payload,
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                        "Accept": "application/json"
+                    },
                     method="POST"
                 )
                 with urllib.request.urlopen(req, timeout=25) as resp:
@@ -173,7 +177,6 @@ class CartoonCoffeeAssistant(QWidget):
 
         outline = QPen(QColor('#141414'), 2.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
 
-        # Білий корпус стаканчика
         p.setPen(outline)
         p.setBrush(QColor('#ffffff'))
         cup = QPainterPath()
@@ -184,7 +187,6 @@ class CartoonCoffeeAssistant(QWidget):
         cup.closeSubpath()
         p.drawPath(cup)
 
-        # Тінь праворуч
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor('#e0e0e0'))
         shadow = QPainterPath()
@@ -195,7 +197,6 @@ class CartoonCoffeeAssistant(QWidget):
         shadow.closeSubpath()
         p.drawPath(shadow)
 
-        # Карамельний тримач
         p.setPen(outline)
         p.setBrush(QColor('#b5651d'))
         sleeve = QPainterPath()
@@ -206,11 +207,9 @@ class CartoonCoffeeAssistant(QWidget):
         sleeve.closeSubpath()
         p.drawPath(sleeve)
 
-        # Блік на тримачі
         p.setPen(QPen(QColor('#e6a15c'), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(int(cx + 17), int(cy + 43), int(cx + 15), int(cy + 73))
 
-        # Чорна кришка
         p.setPen(outline)
         p.setBrush(QColor('#1c1c1c'))
         p.drawRoundedRect(QRectF(cx - 32, cy + 12, 64, 10), 5, 5)
@@ -222,18 +221,15 @@ class CartoonCoffeeAssistant(QWidget):
         lid_top.closeSubpath()
         p.drawPath(lid_top)
 
-        # Бліки на кришці
         p.setPen(QPen(QColor('#ffffff'), 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawArc(QRectF(cx - 22, cy + 4, 24, 6), 120 * 16, 60 * 16)
         p.drawLine(int(cx - 27), int(cy + 16), int(cx - 10), int(cy + 16))
 
-        # Високі дугоподібні брови
         brow_shift = self.eye_dy * 0.45
         p.setPen(QPen(QColor('#141414'), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawArc(QRectF(cx - 16, cy + 39 + brow_shift, 12, 6), 25 * 16, 130 * 16)
         p.drawArc(QRectF(cx + 4, cy + 39 + brow_shift, 12, 6), 25 * 16, 130 * 16)
 
-        # Вії лівого та правого ока
         lash_pen = QPen(QColor('#141414'), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         p.setPen(lash_pen)
         p.drawLine(int(cx - 14), int(cy + 48), int(cx - 18), int(cy + 45))
@@ -244,19 +240,16 @@ class CartoonCoffeeAssistant(QWidget):
         p.drawLine(int(cx + 15), int(cy + 51), int(cx + 20), int(cy + 49))
         p.drawLine(int(cx + 15), int(cy + 54), int(cx + 19), int(cy + 53))
 
-        # Великі зближені білки очей
         p.setPen(QPen(QColor('#141414'), 2.1))
         p.setBrush(QColor('#ffffff'))
         p.drawEllipse(QRectF(cx - 14.5, cy + 44, 14.5, 21))
         p.drawEllipse(QRectF(cx, cy + 44, 14.5, 21))
 
-        # Рухомі зіниці з вирізом (pie-cut)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor('#141414'))
         p.drawPie(QRectF(cx - 10.5 + self.eye_dx, cy + 48 + self.eye_dy, 8.2, 13.5), 215 * 16, 290 * 16)
         p.drawPie(QRectF(cx + 3.5 + self.eye_dx, cy + 48 + self.eye_dy, 8.2, 13.5), 215 * 16, 290 * 16)
 
-        # Добра усмішка зі щічками
         p.setPen(QPen(QColor('#141414'), 2.1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.setBrush(Qt.BrushStyle.NoBrush)
         smile = QPainterPath()
