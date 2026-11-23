@@ -7,29 +7,38 @@ from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QCursor
 from PIL import ImageGrab, Image
 
 PROXY_URL = 'https://gentle-base-e6e8coffee-proxy.piksarmult.workers.dev'
+SYSTEM_RULE = 'Ти дружній офісний ШІ-помічник Кофі. Продовжуй поточний діалог природно українською мовою. НІКОЛИ не вітайся знову ("Привіт", "Я Кофі") — відповідай одразу по суті запитання.'
 
 class AIWorker(QThread):
-    finished = pyqtSignal(str)
+    finished = pyqtSignal(str, str)
 
-    def __init__(self, prompt, image=None):
+    def __init__(self, prompt, history, image=None):
         super().__init__()
         self.prompt = prompt
+        self.history = list(history)
         self.image = image
 
     def run(self):
-        parts = [{"text": self.prompt}]
+        user_parts = [{"text": self.prompt}]
         if self.image is not None:
             buf = io.BytesIO()
             self.image.save(buf, format="JPEG", quality=80)
             b64_img = base64.b64encode(buf.getvalue()).decode("ascii")
-            parts.append({
+            user_parts.append({
                 "inline_data": {
                     "mime_type": "image/jpeg",
                     "data": b64_img
                 }
             })
 
-        payload = json.dumps({"contents": [{"parts": parts}]}).encode("utf-8")
+        contents = [
+            {"role": "user", "parts": [{"text": SYSTEM_RULE}]},
+            {"role": "model", "parts": [{"text": "Зрозумів, відповідаю одразу по суті без зайвих привітань."}]},
+            *self.history,
+            {"role": "user", "parts": user_parts}
+        ]
+
+        payload = json.dumps({"contents": contents}).encode("utf-8")
 
         for attempt in range(2):
             try:
@@ -46,10 +55,11 @@ class AIWorker(QThread):
                 with urllib.request.urlopen(req, timeout=25) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                     if data.get("text"):
-                        self.finished.emit(data["text"].replace("**", "").strip())
+                        reply = data["text"].replace("**", "").strip()
+                        self.finished.emit(self.prompt, reply)
                         return
                     err = data.get("error", "Невідома відповідь сервера")
-                    self.finished.emit(f"Помилка: {err[:100]}")
+                    self.finished.emit("", f"Помилка: {err[:100]}")
                     return
             except urllib.error.HTTPError as e:
                 body = e.read().decode("utf-8", errors="ignore")
@@ -57,12 +67,12 @@ class AIWorker(QThread):
                     time.sleep(2.0)
                     continue
                 if "429" in body or "RESOURCE_EXHAUSTED" in body:
-                    self.finished.emit("Тимчасово вичерпано ліміт запитів Google API. Зачекай хвилину ☕")
+                    self.finished.emit("", "Тимчасово вичерпано ліміт запитів Google API. Зачекай хвилину ☕")
                 else:
-                    self.finished.emit(f"Помилка сервера ({e.code}): {body[:90]}")
+                    self.finished.emit("", f"Помилка сервера ({e.code}): {body[:90]}")
                 return
             except Exception as ex:
-                self.finished.emit(f"Немає зв'язку з сервером: {str(ex)[:90]}")
+                self.finished.emit("", f"Немає зв'язку з сервером: {str(ex)[:90]}")
                 return
 
 class CartoonCoffeeAssistant(QWidget):
@@ -79,6 +89,7 @@ class CartoonCoffeeAssistant(QWidget):
         self.last_cursor = QCursor.pos()
         self.idle_ticks = 0
         self.idle_target = (0.0, 0.0)
+        self.chat_history = []
         self.worker = None
         self.init_ui()
         
@@ -107,7 +118,7 @@ class CartoonCoffeeAssistant(QWidget):
 
         self.msg_box = QTextEdit()
         self.msg_box.setReadOnly(True)
-        self.msg_box.setText('Привіт! Я Кофі ☕ Завжди на зв’язку і стежу за курсором 👀 Запитай щось!')
+        self.msg_box.setText('Привіт! Я Кофі ☕ Тепер я пам’ятаю нашу розмову. Про що поспілкуємось?')
         self.msg_box.setMinimumHeight(85)
         self.msg_box.setMaximumHeight(135)
         bl.addWidget(self.msg_box)
@@ -127,6 +138,11 @@ class CartoonCoffeeAssistant(QWidget):
         b_scan.clicked.connect(self.analyze_screen)
         row2.addWidget(b_scan)
 
+        b_clear = QPushButton('🧹')
+        b_clear.setToolTip("Очистити пам'ять розмови")
+        b_clear.clicked.connect(self.clear_history)
+        row2.addWidget(b_clear)
+
         b_hide = QPushButton('🔽')
         b_hide.setToolTip('Сховати віконце')
         b_hide.clicked.connect(lambda: self.bubble.setVisible(False))
@@ -141,6 +157,10 @@ class CartoonCoffeeAssistant(QWidget):
 
         self.layout.addWidget(self.bubble)
         self.layout.addSpacing(125)
+
+    def clear_history(self):
+        self.chat_history = []
+        self.msg_box.setText('Пам’ять розмови очищено 🧹 Про що поговоримо далі?')
 
     def update_animation(self):
         self.bounce_step = (self.bounce_step + 1) % 40
@@ -274,8 +294,13 @@ class CartoonCoffeeAssistant(QWidget):
             if pos.x() > self.width() - 120 and pos.y() > self.height() - 135:
                 self.bubble.setVisible(not self.bubble.isVisible())
 
-    def on_ai_reply(self, text):
-        self.msg_box.setText(text)
+    def on_ai_reply(self, user_prompt, reply_text):
+        if user_prompt:
+            self.chat_history.append({"role": "user", "parts": [{"text": user_prompt}]})
+            self.chat_history.append({"role": "model", "parts": [{"text": reply_text}]})
+            if len(self.chat_history) > 14:
+                self.chat_history = self.chat_history[-14:]
+        self.msg_box.setText(reply_text)
 
     def analyze_screen(self):
         self.msg_box.setText('Дивлюся на екран... ⚡👀')
@@ -288,8 +313,8 @@ class CartoonCoffeeAssistant(QWidget):
         if w > 1280:
             shot = shot.resize((1280, int(h * (1280 / w))), Image.Resampling.BILINEAR)
 
-        prompt = 'Ти маленький офісний помічник Кофі. Подивись на екран: якщо є помилка — коротко вкажи її. Інакше дай 1 коротку пораду (до 2 речень українською).'
-        self.worker = AIWorker(prompt, shot)
+        prompt = 'Подивись на мій екран: якщо є помилка — коротко вкажи її. Інакше дай 1 коротку пораду (до 2 речень).'
+        self.worker = AIWorker(prompt, self.chat_history, shot)
         self.worker.finished.connect(self.on_ai_reply)
         self.worker.start()
 
@@ -298,8 +323,7 @@ class CartoonCoffeeAssistant(QWidget):
         if not txt: return
         self.input_field.clear()
         self.msg_box.setText('Думаю... ⚡')
-        prompt = f'Відповідай стисло українською як помічник Кофі: {txt}'
-        self.worker = AIWorker(prompt)
+        self.worker = AIWorker(txt, self.chat_history)
         self.worker.finished.connect(self.on_ai_reply)
         self.worker.start()
 
