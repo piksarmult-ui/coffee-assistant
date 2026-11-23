@@ -1,88 +1,72 @@
-import sys, os, base64, ctypes, math, random
-from ctypes import wintypes
+import sys, io, base64, math, random, json, time
+import urllib.request, urllib.error
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLineEdit, QFrame, QTextEdit)
 from PyQt6.QtCore import Qt, QTimer, QPoint, QRectF, QThread, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QCursor
 from PIL import ImageGrab, Image
-from google import genai
 
-KEY_FILE = os.path.join(os.path.expanduser('~'), '.coffee_secure.dat')
-
-class DATA_BLOB(ctypes.Structure):
-    _fields_ = [('cbData', wintypes.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
-
-def protect_str(text: str) -> str:
-    data = text.encode('utf-8')
-    blob_in = DATA_BLOB(len(data), ctypes.cast(ctypes.create_string_buffer(data), ctypes.POINTER(ctypes.c_char)))
-    blob_out = DATA_BLOB()
-    if ctypes.windll.crypt32.CryptProtectData(ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)):
-        raw = ctypes.string_at(blob_out.pbData, blob_out.cbData)
-        ctypes.windll.kernel32.LocalFree(blob_out.pbData)
-        return base64.b64encode(raw).decode('ascii')
-    return ''
-
-def unprotect_str(enc: str) -> str:
-    try:
-        raw = base64.b64decode(enc.encode('ascii'))
-        blob_in = DATA_BLOB(len(raw), ctypes.cast(ctypes.create_string_buffer(raw), ctypes.POINTER(ctypes.c_char)))
-        blob_out = DATA_BLOB()
-        if ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)):
-            res = ctypes.string_at(blob_out.pbData, blob_out.cbData).decode('utf-8')
-            ctypes.windll.kernel32.LocalFree(blob_out.pbData)
-            return res
-    except Exception:
-        pass
-    return ''
-
-def get_key() -> str:
-    if os.path.exists(KEY_FILE):
-        return unprotect_str(open(KEY_FILE, 'r', encoding='utf-8').read().strip())
-    return ''
+PROXY_URL = 'https://coffee-proxy.piksarmult.workers.dev'
 
 class AIWorker(QThread):
     finished = pyqtSignal(str)
 
-    def __init__(self, key, prompt, image=None):
+    def __init__(self, prompt, image=None):
         super().__init__()
-        self.key = key
         self.prompt = prompt
         self.image = image
 
     def run(self):
-        try:
-            client = genai.Client(api_key=self.key)
-            contents = [self.image, self.prompt] if self.image else self.prompt
-            
-            candidates = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash-lite', 'gemini-2.5-flash']
-            last_err = "Не вдалося отримати відповідь"
+        parts = [{"text": self.prompt}]
+        if self.image is not None:
+            buf = io.BytesIO()
+            self.image.save(buf, format="JPEG", quality=80)
+            b64_img = base64.b64encode(buf.getvalue()).decode("ascii")
+            parts.append({
+                "inline_data": {
+                    "mime_type": "image/jpeg",
+                    "data": b64_img
+                }
+            })
 
-            for model_name in candidates:
-                try:
-                    res = client.models.generate_content(model=model_name, contents=contents)
-                    if res and res.text:
-                        self.finished.emit(res.text.replace('**', '').strip())
+        payload = json.dumps({"contents": [{"parts": parts}]}).encode("utf-8")
+
+        for attempt in range(2):
+            try:
+                req = urllib.request.Request(
+                    PROXY_URL,
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=25) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    if data.get("text"):
+                        self.finished.emit(data["text"].replace("**", "").strip())
                         return
-                except Exception as e:
-                    last_err = str(e)
-                    if '429' in last_err or '404' in last_err or 'RESOURCE_EXHAUSTED' in last_err:
-                        continue
-                    if 'API_KEY_INVALID' in last_err or '400' in last_err:
-                        break
-
-            if '429' in last_err or 'RESOURCE_EXHAUSTED' in last_err:
-                self.finished.emit("Тимчасово вичерпано ліміт запитів Google API. Зачекай 1 хвилину ☕")
-            else:
-                self.finished.emit(f"Помилка: {last_err[:90]}")
-        except Exception as e:
-            self.finished.emit(f"Помилка: {str(e)[:90]}")
+                    err = data.get("error", "Невідома відповідь сервера")
+                    self.finished.emit(f"Помилка: {err[:100]}")
+                    return
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="ignore")
+                if ("429" in body or "RESOURCE_EXHAUSTED" in body) and attempt == 0:
+                    time.sleep(2.0)
+                    continue
+                if "429" in body or "RESOURCE_EXHAUSTED" in body:
+                    self.finished.emit("Тимчасово вичерпано ліміт запитів Google API. Зачекай хвилину ☕")
+                else:
+                    self.finished.emit(f"Помилка сервера ({e.code}): {body[:90]}")
+                return
+            except Exception as ex:
+                self.finished.emit(f"Немає зв'язку з сервером: {str(ex)[:90]}")
+                return
 
 class CartoonCoffeeAssistant(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(340, 430)
+        self.resize(340, 410)
         self.drag_pos = QPoint()
         self.click_start = QPoint()
         self.bounce_step = 0
@@ -117,29 +101,12 @@ class CartoonCoffeeAssistant(QWidget):
         bl = QVBoxLayout(self.bubble)
         bl.setSpacing(6)
 
-        has_key = bool(get_key())
-        start_text = 'Привіт! Я Кофі ☕ Тепер у мене нові вії, і я стежу за курсором 👀' if has_key else 'Перше налаштування: встав ключ Gemini API (він буде зашифрований і прихований):'
-        
         self.msg_box = QTextEdit()
         self.msg_box.setReadOnly(True)
-        self.msg_box.setText(start_text)
+        self.msg_box.setText('Привіт! Я Кофі ☕ Завжди на зв’язку і стежу за курсором 👀 Запитай щось!')
         self.msg_box.setMinimumHeight(85)
-        self.msg_box.setMaximumHeight(130)
+        self.msg_box.setMaximumHeight(135)
         bl.addWidget(self.msg_box)
-
-        self.key_box = QWidget()
-        key_row = QHBoxLayout(self.key_box)
-        key_row.setContentsMargins(0, 0, 0, 0)
-        self.key_input = QLineEdit()
-        self.key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.key_input.setPlaceholderText('Встав ключ (буде приховано)...')
-        key_row.addWidget(self.key_input)
-        b_save_key = QPushButton('ОК')
-        b_save_key.setStyleSheet('background-color: #2e7d32;')
-        b_save_key.clicked.connect(self.save_key)
-        key_row.addWidget(b_save_key)
-        self.key_box.setVisible(not has_key)
-        bl.addWidget(self.key_box)
 
         row1 = QHBoxLayout()
         self.input_field = QLineEdit()
@@ -171,18 +138,8 @@ class CartoonCoffeeAssistant(QWidget):
         self.layout.addWidget(self.bubble)
         self.layout.addSpacing(125)
 
-    def save_key(self):
-        val = self.key_input.text().strip()
-        if val:
-            encrypted = protect_str(val)
-            open(KEY_FILE, 'w', encoding='utf-8').write(encrypted)
-            self.key_input.clear()
-            self.key_box.setVisible(False)
-            self.msg_box.setText('Ключ зашифровано та надійно збережено! ☕')
-
     def update_animation(self):
         self.bounce_step = (self.bounce_step + 1) % 40
-        
         cur = QCursor.pos()
         if cur != self.last_cursor:
             self.last_cursor = cur
@@ -270,45 +227,42 @@ class CartoonCoffeeAssistant(QWidget):
         p.drawArc(QRectF(cx - 22, cy + 4, 24, 6), 120 * 16, 60 * 16)
         p.drawLine(int(cx - 27), int(cy + 16), int(cx - 10), int(cy + 16))
 
-        # --- НОВІ ВИРАЗНІ ОЧІ З ВІЯМИ (як на референсі) ---
+        # Високі дугоподібні брови
         brow_shift = self.eye_dy * 0.45
         p.setPen(QPen(QColor('#141414'), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        # Високі дугоподібні брови
         p.drawArc(QRectF(cx - 16, cy + 39 + brow_shift, 12, 6), 25 * 16, 130 * 16)
         p.drawArc(QRectF(cx + 4, cy + 39 + brow_shift, 12, 6), 25 * 16, 130 * 16)
 
-        # Вії лівого ока (3 вигнуті вії зліва зверху)
+        # Вії лівого та правого ока
         lash_pen = QPen(QColor('#141414'), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         p.setPen(lash_pen)
         p.drawLine(int(cx - 14), int(cy + 48), int(cx - 18), int(cy + 45))
         p.drawLine(int(cx - 15), int(cy + 51), int(cx - 20), int(cy + 49))
         p.drawLine(int(cx - 15), int(cy + 54), int(cx - 19), int(cy + 53))
 
-        # Вії правого ока (3 вигнуті вії справа зверху)
         p.drawLine(int(cx + 14), int(cy + 48), int(cx + 18), int(cy + 45))
         p.drawLine(int(cx + 15), int(cy + 51), int(cx + 20), int(cy + 49))
         p.drawLine(int(cx + 15), int(cy + 54), int(cx + 19), int(cy + 53))
 
-        # Великі витягнуті білки очей, що торкаються посередині
+        # Великі зближені білки очей
         p.setPen(QPen(QColor('#141414'), 2.1))
         p.setBrush(QColor('#ffffff'))
         p.drawEllipse(QRectF(cx - 14.5, cy + 44, 14.5, 21))
         p.drawEllipse(QRectF(cx, cy + 44, 14.5, 21))
 
-        # Великі рухомі зіниці з трикутним вирізом зліва (pie-cut)
+        # Рухомі зіниці з вирізом (pie-cut)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor('#141414'))
         p.drawPie(QRectF(cx - 10.5 + self.eye_dx, cy + 48 + self.eye_dy, 8.2, 13.5), 215 * 16, 290 * 16)
         p.drawPie(QRectF(cx + 3.5 + self.eye_dx, cy + 48 + self.eye_dy, 8.2, 13.5), 215 * 16, 290 * 16)
 
-        # Добра мультяшна усмішка зі щічками
+        # Добра усмішка зі щічками
         p.setPen(QPen(QColor('#141414'), 2.1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.setBrush(Qt.BrushStyle.NoBrush)
         smile = QPainterPath()
         smile.moveTo(cx - 11, cy + 68)
         smile.quadTo(cx, cy + 77, cx + 11, cy + 68)
         p.drawPath(smile)
-        # Маленькі ямочки-дужки по краях усмішки
         p.drawArc(QRectF(cx - 13, cy + 66, 4, 4), 110 * 16, 140 * 16)
         p.drawArc(QRectF(cx + 9, cy + 66, 4, 4), 290 * 16, 140 * 16)
 
@@ -331,10 +285,6 @@ class CartoonCoffeeAssistant(QWidget):
         self.msg_box.setText(text)
 
     def analyze_screen(self):
-        key = get_key()
-        if not key:
-            self.key_box.setVisible(True)
-            return
         self.msg_box.setText('Дивлюся на екран... ⚡👀')
         self.hide()
         QApplication.processEvents()
@@ -346,21 +296,17 @@ class CartoonCoffeeAssistant(QWidget):
             shot = shot.resize((1280, int(h * (1280 / w))), Image.Resampling.BILINEAR)
 
         prompt = 'Ти маленький офісний помічник Кофі. Подивись на екран: якщо є помилка — коротко вкажи її. Інакше дай 1 коротку пораду (до 2 речень українською).'
-        self.worker = AIWorker(key, prompt, shot)
+        self.worker = AIWorker(prompt, shot)
         self.worker.finished.connect(self.on_ai_reply)
         self.worker.start()
 
     def ask_text(self):
         txt = self.input_field.text().strip()
         if not txt: return
-        key = get_key()
-        if not key:
-            self.key_box.setVisible(True)
-            return
         self.input_field.clear()
         self.msg_box.setText('Думаю... ⚡')
         prompt = f'Відповідай стисло українською як помічник Кофі: {txt}'
-        self.worker = AIWorker(key, prompt)
+        self.worker = AIWorker(prompt)
         self.worker.finished.connect(self.on_ai_reply)
         self.worker.start()
 
