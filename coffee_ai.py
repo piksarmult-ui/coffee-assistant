@@ -1,8 +1,9 @@
 import sys, os
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QLabel, QFrame
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
+                             QPushButton, QLineEdit, QFrame, QTextEdit)
 from PyQt6.QtCore import Qt, QTimer, QPoint, QRectF, QThread, pyqtSignal
-from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QLinearGradient, QPainterPath
-from PIL import ImageGrab
+from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QPainterPath
+from PIL import ImageGrab, Image
 from google import genai
 
 KEY_FILE = os.path.join(os.path.expanduser('~'), 'coffee_key.txt')
@@ -26,26 +27,25 @@ class AIWorker(QThread):
             client = genai.Client(api_key=self.key)
             contents = [self.image, self.prompt] if self.image else self.prompt
             
-            # Збираємо актуальні моделі 3-го покоління та всі доступні моделі для цього ключа
-            candidates = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-3.1-pro-preview']
+            candidates = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash']
             try:
                 for m in client.models.list():
                     name = m.name.replace('models/', '')
-                    if 'gemini' in name and 'embedding' not in name and 'imagen' not in name and name not in candidates:
+                    if ('lite' in name or 'flash' in name) and name not in candidates:
                         candidates.append(name)
             except Exception:
                 pass
 
-            last_err = "Не знайдено робочої моделі"
+            last_err = "Не знайдено моделі"
             for model_name in candidates:
                 try:
                     res = client.models.generate_content(model=model_name, contents=contents)
                     if res and res.text:
-                        self.finished.emit(res.text)
+                        clean_text = res.text.replace('**', '').strip()
+                        self.finished.emit(clean_text)
                         return
                 except Exception as e:
                     last_err = str(e)
-                    # Якщо проблема саме в ключі — зупиняємось одразу
                     if 'API_KEY_INVALID' in last_err or '400' in last_err:
                         break
                     continue
@@ -54,39 +54,66 @@ class AIWorker(QThread):
         except Exception as e:
             self.finished.emit(f"Помилка: {str(e)[:100]}")
 
-class ThermosAssistant(QWidget):
+class CartoonCoffeeAssistant(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(350, 460)
+        self.resize(340, 430)
         self.drag_pos = QPoint()
-        self.steam_offset = 0
+        self.bounce_step = 0
         self.worker = None
         self.init_ui()
+        
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self.update_animation)
-        self.anim_timer.start(80)
+        self.anim_timer.start(100)
 
     def init_ui(self):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(10, 10, 10, 10)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight)
+        
         self.bubble = QFrame(self)
+        self.bubble.setObjectName("mainBubble")
         self.bubble.setStyleSheet('''
-            QFrame { background-color: #ffffff; border: 2px solid #6f4e37; border-radius: 16px; padding: 8px; }
-            QLabel { color: #3e2723; font-family: Segoe UI; font-size: 12px; border: none; }
-            QLineEdit { border: 1px solid #d7ccc8; border-radius: 8px; padding: 5px 8px; font-size: 12px; color: #3e2723; background: #fff; }
-            QPushButton { background-color: #6f4e37; color: white; border-radius: 8px; padding: 6px 10px; font-weight: bold; font-size: 11px; }
-            QPushButton:hover { background-color: #5a3e2b; }
+            QFrame#mainBubble { background-color: #ffffff; border: 2.5px solid #1a1a1a; border-radius: 18px; padding: 8px; }
+            QTextEdit { 
+                color: #1a1a1a; 
+                font-family: 'Segoe UI'; 
+                font-size: 12px; 
+                border: none; 
+                background: transparent; 
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #f5ebe0;
+                width: 6px;
+                border-radius: 3px;
+            }
+            QScrollBar::handle:vertical {
+                background: #b5651d;
+                border-radius: 3px;
+            }
+            QLineEdit { border: 1.5px solid #bcaaa4; border-radius: 8px; padding: 5px 8px; font-size: 12px; color: #1a1a1a; background: #fff; }
+            QPushButton { background-color: #b5651d; color: white; border: 1.5px solid #1a1a1a; border-radius: 8px; padding: 5px 9px; font-weight: bold; font-size: 11px; }
+            QPushButton:hover { background-color: #965215; }
         ''')
         bl = QVBoxLayout(self.bubble)
-        has_key = bool(get_key())
-        start_text = 'Привіт! Готовий до роботи ☕ Натисни на кружку, щоб сховати меню.' if has_key else 'Встав свій ключ Gemini API у поле нижче та натисни «ОК»:'
-        self.msg_label = QLabel(start_text)
-        self.msg_label.setWordWrap(True)
-        bl.addWidget(self.msg_label)
+        bl.setSpacing(6)
 
+        has_key = bool(get_key())
+        start_text = 'Привіт! Я Кофі ☕ Натисни на мене, щоб сховати віконце, або запитай щось!' if has_key else 'Встав свій ключ Gemini API у поле нижче та натисни «ОК»:'
+        
+        # Повноцінне поле з прокруткою коліщатком та можливістю копіювати текст
+        self.msg_box = QTextEdit()
+        self.msg_box.setReadOnly(True)
+        self.msg_box.setText(start_text)
+        self.msg_box.setMinimumHeight(85)
+        self.msg_box.setMaximumHeight(130)
+        bl.addWidget(self.msg_box)
+
+        # Поле для ключа
         self.key_box = QWidget()
         key_row = QHBoxLayout(self.key_box)
         key_row.setContentsMargins(0, 0, 0, 0)
@@ -101,9 +128,10 @@ class ThermosAssistant(QWidget):
         self.key_box.setVisible(not has_key)
         bl.addWidget(self.key_box)
 
+        # Рядок чату
         row1 = QHBoxLayout()
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText('Запитай або запиши справу...')
+        self.input_field.setPlaceholderText('Напиши запитання...')
         self.input_field.returnPressed.connect(self.ask_text)
         row1.addWidget(self.input_field)
         b_send = QPushButton('➤')
@@ -111,77 +139,127 @@ class ThermosAssistant(QWidget):
         row1.addWidget(b_send)
         bl.addLayout(row1)
 
+        # Кнопки дій
         row2 = QHBoxLayout()
         b_scan = QPushButton('👀 Що не так на екрані?')
         b_scan.clicked.connect(self.analyze_screen)
         row2.addWidget(b_scan)
         b_key = QPushButton('🔑')
-        b_key.setToolTip('Показати/сховати поле ключа')
+        b_key.setToolTip('Ключ API')
         b_key.clicked.connect(lambda: self.key_box.setVisible(not self.key_box.isVisible()))
         row2.addWidget(b_key)
         b_close = QPushButton('✖')
-        b_close.setStyleSheet('background-color: #a1887f; padding: 6px 8px;')
+        b_close.setStyleSheet('background-color: #757575; padding: 5px 8px;')
         b_close.clicked.connect(QApplication.quit)
         row2.addWidget(b_close)
         bl.addLayout(row2)
 
         self.layout.addWidget(self.bubble)
-        self.layout.addSpacing(155)
+        self.layout.addSpacing(125)
 
     def save_key(self):
         val = self.key_input.text().strip()
         if val:
             open(KEY_FILE, 'w', encoding='utf-8').write(val)
             self.key_box.setVisible(False)
-            self.msg_label.setText('Ключ збережено! Тепер я готовий працювати 🧠☕')
+            self.msg_box.setText('Ключ збережено! Готовий допомагати ☕')
 
     def update_animation(self):
-        self.steam_offset = (self.steam_offset + 1) % 30
+        self.bounce_step = (self.bounce_step + 1) % 20
         self.update()
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        cx, cy = self.width() - 85, self.height() - 145
-        p.setPen(QPen(QColor(161, 136, 127, 170), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        for i, dx in enumerate([-14, 0, 14]):
-            ys = (self.steam_offset + i * 8) % 25
-            path = QPainterPath()
-            path.moveTo(cx + dx, cy - 5 - ys)
-            path.quadTo(cx + dx - 6, cy - 15 - ys, cx + dx, cy - 25 - ys)
-            p.drawPath(path)
-        p.setPen(QPen(QColor('#37474f'), 8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawRoundedRect(QRectF(cx + 25, cy + 25, 25, 50), 10, 10)
-        grad = QLinearGradient(cx - 38, cy, cx + 38, cy)
-        grad.setColorAt(0, QColor('#3e2723'))
-        grad.setColorAt(0.4, QColor('#6d4c41'))
-        grad.setColorAt(1, QColor('#2c1b18'))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(grad))
-        body = QPainterPath()
-        body.moveTo(cx - 38, cy + 12)
-        body.lineTo(cx + 38, cy + 12)
-        body.lineTo(cx + 30, cy + 115)
-        body.lineTo(cx - 30, cy + 115)
-        body.closeSubpath()
-        p.drawPath(body)
-        p.setBrush(QColor('#b0bec5'))
-        p.drawRoundedRect(QRectF(cx - 30, cy + 112, 60, 12), 5, 5)
-        p.drawEllipse(QRectF(cx - 39, cy + 4, 78, 18))
-        p.setBrush(QColor('#26140e'))
-        p.drawEllipse(QRectF(cx - 33, cy + 7, 66, 12))
+
+        dy = -2 if self.bounce_step < 10 else 0
+        cx = self.width() - 62
+        cy = self.height() - 115 + dy
+
+        outline = QPen(QColor('#141414'), 2.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+
+        # 1. Білий корпус стаканчика
+        p.setPen(outline)
         p.setBrush(QColor('#ffffff'))
-        p.drawEllipse(QRectF(cx - 22, cy + 45, 16, 16))
-        p.drawEllipse(QRectF(cx + 6, cy + 45, 16, 16))
-        p.setBrush(QColor('#1a1a1a'))
-        p.drawEllipse(QRectF(cx - 17, cy + 50, 7, 7))
-        p.drawEllipse(QRectF(cx + 11, cy + 50, 7, 7))
-        p.setPen(QPen(QColor('#ffffff'), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        smile = QPainterPath()
-        smile.moveTo(cx - 8, cy + 72)
-        smile.quadTo(cx, cy + 80, cx + 8, cy + 72)
-        p.drawPath(smile)
+        cup = QPainterPath()
+        cup.moveTo(cx - 27, cy + 20)
+        cup.lineTo(cx + 27, cy + 20)
+        cup.lineTo(cx + 21, cy + 96)
+        cup.quadTo(cx, cy + 102, cx - 21, cy + 96)
+        cup.closeSubpath()
+        p.drawPath(cup)
+
+        # Тінь праворуч
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor('#e0e0e0'))
+        shadow = QPainterPath()
+        shadow.moveTo(cx + 15, cy + 22)
+        shadow.lineTo(cx + 25, cy + 22)
+        shadow.lineTo(cx + 19, cy + 95)
+        shadow.lineTo(cx + 11, cy + 96)
+        shadow.closeSubpath()
+        p.drawPath(shadow)
+
+        # 2. Карамельно-коричневий тримач
+        p.setPen(outline)
+        p.setBrush(QColor('#b5651d'))
+        sleeve = QPainterPath()
+        sleeve.moveTo(cx - 26, cy + 36)
+        sleeve.quadTo(cx, cy + 41, cx + 26, cy + 36)
+        sleeve.lineTo(cx + 23, cy + 79)
+        sleeve.quadTo(cx, cy + 84, cx - 23, cy + 79)
+        sleeve.closeSubpath()
+        p.drawPath(sleeve)
+
+        # Блік на тримачі
+        p.setPen(QPen(QColor('#e6a15c'), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(int(cx + 17), int(cy + 43), int(cx + 15), int(cy + 73))
+
+        # 3. Чорна кришка
+        p.setPen(outline)
+        p.setBrush(QColor('#1c1c1c'))
+        p.drawRoundedRect(QRectF(cx - 32, cy + 12, 64, 10), 5, 5)
+        lid_top = QPainterPath()
+        lid_top.moveTo(cx - 29, cy + 12)
+        lid_top.lineTo(cx - 24, cy + 3)
+        lid_top.quadTo(cx, cy, cx + 24, cy + 3)
+        lid_top.lineTo(cx + 29, cy + 12)
+        lid_top.closeSubpath()
+        p.drawPath(lid_top)
+
+        # Бліки на кришці
+        p.setPen(QPen(QColor('#ffffff'), 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawArc(QRectF(cx - 22, cy + 4, 24, 6), 120 * 16, 60 * 16)
+        p.drawLine(int(cx - 27), int(cy + 16), int(cx - 10), int(cy + 16))
+
+        # 4. Мультяшні очі та брови
+        p.setPen(QPen(QColor('#141414'), 2.3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawArc(QRectF(cx - 17, cy + 41, 13, 6), 20 * 16, 140 * 16)
+        p.drawArc(QRectF(cx + 4, cy + 41, 13, 6), 20 * 16, 140 * 16)
+
+        p.setPen(QPen(QColor('#141414'), 2))
+        p.setBrush(QColor('#ffffff'))
+        p.drawEllipse(QRectF(cx - 16, cy + 46, 13, 17))
+        p.drawEllipse(QRectF(cx + 3, cy + 46, 13, 17))
+
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor('#141414'))
+        p.drawPie(QRectF(cx - 11, cy + 49, 7, 11), 35 * 16, 290 * 16)
+        p.drawPie(QRectF(cx + 8, cy + 49, 7, 11), 35 * 16, 290 * 16)
+
+        # 5. Ротик з язичком
+        p.setPen(QPen(QColor('#141414'), 2))
+        p.setBrush(QColor('#212121'))
+        mouth = QPainterPath()
+        mouth.moveTo(cx - 9, cy + 67)
+        mouth.quadTo(cx, cy + 69, cx + 9, cy + 67)
+        mouth.quadTo(cx + 8, cy + 77, cx, cy + 77)
+        mouth.quadTo(cx - 8, cy + 77, cx - 9, cy + 67)
+        p.drawPath(mouth)
+
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor('#e53935'))
+        p.drawEllipse(QRectF(cx - 4, cy + 71, 8, 5))
 
     def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
@@ -197,21 +275,25 @@ class ThermosAssistant(QWidget):
             self.bubble.setVisible(not self.bubble.isVisible())
 
     def on_ai_reply(self, text):
-        self.msg_label.setText(text)
+        self.msg_box.setText(text)
 
     def analyze_screen(self):
         key = get_key()
         if not key:
             self.key_box.setVisible(True)
-            self.msg_label.setText('Спочатку встав API-ключ у поле нижче 👇')
+            self.msg_box.setText('Спочатку встав API-ключ у поле нижче 👇')
             return
-        self.msg_label.setText('Дивлюся на екран... 🔍☕')
+        self.msg_box.setText('Швидко дивлюся на екран... ⚡👀')
         self.hide()
         QApplication.processEvents()
         shot = ImageGrab.grab()
         self.show()
 
-        prompt = 'Ти маленький помічник Кофі. Подивись на екран: якщо є помилка в тексті, коді чи таблиці — скажи, що не так. Інакше дай коротку корисну пораду (2-3 речення українською).'
+        w, h = shot.size
+        if w > 1280:
+            shot = shot.resize((1280, int(h * (1280 / w))), Image.Resampling.BILINEAR)
+
+        prompt = 'Ти маленький офісний помічник Кофі. Подивись на екран: якщо є помилка — коротко вкажи її. Інакше дай 1 коротку пораду (до 2 речень українською).'
         self.worker = AIWorker(key, prompt, shot)
         self.worker.finished.connect(self.on_ai_reply)
         self.worker.start()
@@ -222,17 +304,17 @@ class ThermosAssistant(QWidget):
         key = get_key()
         if not key:
             self.key_box.setVisible(True)
-            self.msg_label.setText('Спочатку встав API-ключ у поле нижче 👇')
+            self.msg_box.setText('Спочатку встав API-ключ у поле нижче 👇')
             return
         self.input_field.clear()
-        self.msg_label.setText('Думаю... ☕')
-        prompt = f'Відповідай коротко (2-3 речення) українською як офісний помічник Кофі: {txt}'
+        self.msg_box.setText('Думаю... ⚡')
+        prompt = f'Відповідай стисло українською як помічник Кофі: {txt}'
         self.worker = AIWorker(key, prompt)
         self.worker.finished.connect(self.on_ai_reply)
         self.worker.start()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    w = ThermosAssistant()
+    w = CartoonCoffeeAssistant()
     w.show()
     sys.exit(app.exec())
