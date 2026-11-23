@@ -18,17 +18,13 @@
       padding: 16px;
       color: #1a1a1a;
     }
-
     .widget-container {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
       max-width: 380px;
       width: 100%;
-      position: relative;
     }
-
-    /* Діалогова хмаринка як у десктопній версії */
     .bubble {
       width: 100%;
       background: #ffffff;
@@ -49,7 +45,6 @@
       overflow: hidden;
       border: none;
     }
-
     .header-bar {
       display: flex;
       justify-content: space-between;
@@ -59,7 +54,6 @@
       font-size: 13px;
       color: #b5651d;
     }
-
     .msg-box {
       background: #faf6f2;
       border: 1.5px solid #e6d7cc;
@@ -75,25 +69,17 @@
     }
     .msg-box::-webkit-scrollbar { width: 6px; }
     .msg-box::-webkit-scrollbar-thumb { background: #b5651d; border-radius: 3px; }
-
-    .row {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 8px;
-    }
+    .row { display: flex; gap: 6px; margin-bottom: 8px; }
     .row:last-child { margin-bottom: 0; }
-
-    input[type="text"], input[type="password"] {
+    input[type="text"] {
       flex: 1;
       border: 2px solid #bcaaa4;
       border-radius: 10px;
       padding: 8px 10px;
       font-size: 13px;
       outline: none;
-      transition: border-color 0.2s;
     }
     input:focus { border-color: #b5651d; }
-
     button {
       background: #b5651d;
       color: #ffffff;
@@ -103,19 +89,14 @@
       font-weight: 700;
       font-size: 12.5px;
       cursor: pointer;
-      transition: transform 0.1s, background 0.15s;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 4px;
     }
     button:hover { background: #965215; }
-    button:active { transform: scale(0.96); }
-    button.btn-green { background: #2e7d32; }
     button.btn-gray { background: #757575; }
     button.btn-light { background: #f5ebe0; color: #141414; }
-
-    /* Список задач */
     .tasks-panel {
       display: none;
       background: #fdf9f6;
@@ -138,8 +119,6 @@
     .task-item:last-child { border-bottom: none; }
     .task-item span { cursor: pointer; }
     .task-item.done span { text-decoration: line-through; color: #888; }
-
-    /* Мультяшний персонаж стаканчика */
     .character-wrap {
       cursor: pointer;
       user-select: none;
@@ -147,8 +126,6 @@
       animation: bounce 2s infinite ease-in-out;
       filter: drop-shadow(0 6px 10px rgba(0,0,0,0.18));
     }
-    .character-wrap:hover { transform: scale(1.05); }
-
     @keyframes bounce {
       0%, 100% { transform: translateY(0); }
       50% { transform: translateY(-4px); }
@@ -158,22 +135,14 @@
 <body>
 
 <div class="widget-container">
-  <!-- Діалогове вікно -->
   <div class="bubble" id="bubble">
     <div class="header-bar">
       <span>☕ Кофі • ШІ-асистент</span>
       <span id="modelBadge" style="font-size: 11px; color: #757575;">Gemini 3.1 Lite</span>
     </div>
 
-    <div class="msg-box" id="msgBox">Привіт! Я Кофі ☕ Натисни на мене або «🔽», щоб сховати віконце, або запитай щось!</div>
+    <div class="msg-box" id="msgBox">Привіт! Я Кофі ☕ Готовий допомагати без зайвих налаштувань! Запитай щось або покажи екран.</div>
 
-    <!-- Блок введення ключа API -->
-    <div class="row" id="keyRow" style="display: none;">
-      <input type="password" id="apiKeyInput" placeholder="Встав ключ AIza..." />
-      <button class="btn-green" onclick="saveKey()">ОК</button>
-    </div>
-
-    <!-- Міні-список справ -->
     <div class="tasks-panel" id="tasksPanel">
       <div class="row" style="margin-bottom: 6px;">
         <input type="text" id="taskInput" placeholder="Нова справа..." onkeydown="if(event.key==='Enter') addTask()" />
@@ -182,48 +151,34 @@
       <div id="tasksList"></div>
     </div>
 
-    <!-- Поле запиту -->
     <div class="row">
       <input type="text" id="promptInput" placeholder="Напиши запитання..." onkeydown="if(event.key==='Enter') askAI()" />
       <button onclick="askAI()" title="Надіслати">➤</button>
     </div>
 
-    <!-- Панель кнопок як у десктопній версії -->
     <div class="row">
       <button onclick="analyzeScreen()" style="flex: 1;">👀 Що на екрані?</button>
       <button class="btn-light" onclick="toggleTasks()" title="Список справ">📋</button>
       <button class="btn-light" onclick="toggleBubble()" title="Сховати діалог">🔽</button>
-      <button class="btn-light" onclick="toggleKeyRow()" title="Ключ API">🔑</button>
     </div>
   </div>
 
-  <!-- SVG мультяшний світлий стаканчик з pie-cut очима (1-в-1 як у .exe) -->
   <div class="character-wrap" onclick="toggleBubble()" title="Натисни, щоб відкрити або сховати Кофі">
     <svg width="86" height="118" viewBox="0 0 86 118" xmlns="http://www.w3.org/2000/svg">
-      <!-- Білий корпус стаканчика -->
       <path d="M16 24 L70 24 L64 102 Q43 108 22 102 Z" fill="#ffffff" stroke="#141414" stroke-width="2.8" stroke-linejoin="round"/>
-      <!-- Тінь праворуч -->
       <path d="M58 26 L68 26 L62 101 L54 102 Z" fill="#e0e0e0"/>
-      <!-- Карамельно-коричневий тримач -->
       <path d="M17 40 Q43 45 69 40 L66 84 Q43 89 20 84 Z" fill="#b5651d" stroke="#141414" stroke-width="2.8" stroke-linejoin="round"/>
-      <!-- Блік на тримачі -->
       <line x1="60" y1="47" x2="58" y2="78" stroke="#e6a15c" stroke-width="2.2" stroke-linecap="round"/>
-      <!-- Чорна кришка -->
       <path d="M14 16 L19 7 Q43 3 67 7 L72 16 Z" fill="#1c1c1c" stroke="#141414" stroke-width="2.8" stroke-linejoin="round"/>
       <rect x="11" y="15" width="64" height="10" rx="5" fill="#1c1c1c" stroke="#141414" stroke-width="2.8"/>
-      <!-- Бліки на кришці -->
       <path d="M22 10 Q32 7 42 9" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
       <line x1="17" y1="20" x2="34" y2="20" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
-      <!-- Брови -->
       <path d="M26 46 Q32 42 39 46" fill="none" stroke="#141414" stroke-width="2.4" stroke-linecap="round"/>
       <path d="M47 46 Q54 42 60 46" fill="none" stroke="#141414" stroke-width="2.4" stroke-linecap="round"/>
-      <!-- Білки очей -->
       <ellipse cx="33" cy="58" rx="6.8" ry="9" fill="#ffffff" stroke="#141414" stroke-width="2.2"/>
       <ellipse cx="53" cy="58" rx="6.8" ry="9" fill="#ffffff" stroke="#141414" stroke-width="2.2"/>
-      <!-- Ретро-зіниці (pie-cut eyes) -->
       <path d="M35 58 L39 54 A4.5 6 0 1 0 39 62 Z" fill="#141414"/>
       <path d="M55 58 L59 54 A4.5 6 0 1 0 59 62 Z" fill="#141414"/>
-      <!-- Веселий ротик з язичком -->
       <path d="M34 71 Q43 73 52 71 Q51 82 43 82 Q35 82 34 71 Z" fill="#212121" stroke="#141414" stroke-width="2.2"/>
       <ellipse cx="43" cy="78" rx="4.5" ry="2.8" fill="#e53935"/>
     </svg>
@@ -231,17 +186,11 @@
 </div>
 
 <script>
-  const STORAGE_KEY = 'coffee_ai_gemini_key';
+  const PROXY_URL = 'https://coffee-proxy.piksarmult.workers.dev';
   const TASKS_KEY = 'coffee_ai_tasks_v2';
 
   window.onload = () => {
-    const savedKey = localStorage.getItem(STORAGE_KEY);
-    if (!savedKey) {
-      document.getElementById('keyRow').style.display = 'flex';
-      document.getElementById('msgBox').textContent = 'Встав свій ключ Gemini API у поле нижче та натисни «ОК»:';
-    } else {
-      document.getElementById('apiKeyInput').value = savedKey;
-    }
+    localStorage.removeItem('coffee_ai_gemini_key');
     renderTasks();
   };
 
@@ -249,61 +198,30 @@
     document.getElementById('bubble').classList.toggle('hidden');
   }
 
-  function toggleKeyRow() {
-    const row = document.getElementById('keyRow');
-    row.style.display = row.style.display === 'none' ? 'flex' : 'none';
-  }
-
-  function saveKey() {
-    const val = document.getElementById('apiKeyInput').value.trim();
-    if (val) {
-      localStorage.setItem(STORAGE_KEY, val);
-      document.getElementById('keyRow').style.display = 'none';
-      document.getElementById('msgBox').textContent = 'Ключ збережено! Готовий допомагати ☕';
-    }
-  }
-
   async function callGemini(promptText, base64Image = null) {
-    const key = localStorage.getItem(STORAGE_KEY);
-    if (!key) {
-      toggleKeyRow();
-      document.getElementById('msgBox').textContent = 'Спочатку встав API-ключ у поле нижче 👇';
-      return;
-    }
-
-    const candidates = [
-      'gemini-3.1-flash-lite-preview',
-      'gemini-3-flash-preview',
-      'gemini-2.5-flash'
-    ];
-
     const parts = [{ text: promptText }];
     if (base64Image) {
       parts.push({ inline_data: { mime_type: 'image/jpeg', data: base64Image } });
     }
 
-    let lastErr = 'Помилка запиту';
-    for (const model of candidates) {
-      try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts }] })
-        });
-        const data = await res.json();
-        if (res.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
-          document.getElementById('modelBadge').textContent = model.replace('-preview', '');
-          const clean = data.candidates[0].content.parts[0].text.replace(/\*\*/g, '').trim();
-          document.getElementById('msgBox').textContent = clean;
-          return;
+    try {
+      const res = await fetch(PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts }] })
+      });
+      const data = await res.json();
+      if (res.ok && data.text) {
+        if (data.model) {
+          document.getElementById('modelBadge').textContent = data.model.replace('-preview', '');
         }
-        lastErr = data.error?.message || `HTTP ${res.status}`;
-        if (res.status === 400 || res.status === 403) break;
-      } catch (e) {
-        lastErr = e.message;
+        document.getElementById('msgBox').textContent = data.text.replace(/\*\*/g, '').trim();
+      } else {
+        document.getElementById('msgBox').textContent = 'Помилка: ' + (data.error || 'Сервер не відповів');
       }
+    } catch (e) {
+      document.getElementById('msgBox').textContent = 'Помилка з’єднання: ' + e.message;
     }
-    document.getElementById('msgBox').textContent = 'Помилка: ' + lastErr;
   }
 
   function askAI() {
@@ -316,12 +234,6 @@
   }
 
   async function analyzeScreen() {
-    const key = localStorage.getItem(STORAGE_KEY);
-    if (!key) {
-      toggleKeyRow();
-      document.getElementById('msgBox').textContent = 'Спочатку встав API-ключ у поле нижче 👇';
-      return;
-    }
     try {
       document.getElementById('msgBox').textContent = 'Вибери вкладку або вікно для перевірки... 👀';
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -345,13 +257,8 @@
     }
   }
 
-  // Трекер справ
-  function toggleTasks() {
-    document.getElementById('tasksPanel').classList.toggle('open');
-  }
-  function getTasks() {
-    return JSON.parse(localStorage.getItem(TASKS_KEY) || '[]');
-  }
+  function toggleTasks() { document.getElementById('tasksPanel').classList.toggle('open'); }
+  function getTasks() { return JSON.parse(localStorage.getItem(TASKS_KEY) || '[]'); }
   function addTask() {
     const inp = document.getElementById('taskInput');
     const txt = inp.value.trim();
