@@ -1,6 +1,6 @@
 import sys, os
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QLabel, QFrame, QInputDialog
-from PyQt6.QtCore import Qt, QTimer, QPoint, QRectF
+from PyQt6.QtCore import Qt, QTimer, QPoint, QRectF, QThread, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QLinearGradient, QPainterPath
 from PIL import ImageGrab
 from google import genai
@@ -12,6 +12,25 @@ def get_key():
         return open(KEY_FILE, 'r', encoding='utf-8').read().strip()
     return ''
 
+# Окремий фоновий потік для ШІ, щоб інтерфейс ніколи не зависав
+class AIWorker(QThread):
+    finished = pyqtSignal(str)
+
+    def __init__(self, key, prompt, image=None):
+        super().__init__()
+        self.key = key
+        self.prompt = prompt
+        self.image = image
+
+    def run(self):
+        try:
+            client = genai.Client(api_key=self.key)
+            contents = [self.image, self.prompt] if self.image else self.prompt
+            res = client.models.generate_content(model='gemini-2.5-flash', contents=contents)
+            self.finished.emit(res.text)
+        except Exception as e:
+            self.finished.emit(f"Помилка: {str(e)[:80]}")
+
 class ThermosAssistant(QWidget):
     def __init__(self):
         super().__init__()
@@ -20,6 +39,7 @@ class ThermosAssistant(QWidget):
         self.resize(350, 430)
         self.drag_pos = QPoint()
         self.steam_offset = 0
+        self.worker = None
         self.init_ui()
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self.update_animation)
@@ -137,26 +157,24 @@ class ThermosAssistant(QWidget):
         if (e.globalPosition().toPoint() - self.click_start).manhattanLength() < 5:
             self.bubble.setVisible(not self.bubble.isVisible())
 
+    def on_ai_reply(self, text):
+        self.msg_label.setText(text)
+
     def analyze_screen(self):
         key = get_key()
         if not key:
             self.set_key()
             return
         self.msg_label.setText('Дивлюся на екран... 🔍☕')
+        self.hide()
         QApplication.processEvents()
-        try:
-            self.hide()
-            shot = ImageGrab.grab()
-            self.show()
-            client = genai.Client(api_key=key)
-            res = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=[shot, 'Ти маленький помічник Кофі. Подивись на екран: якщо є помилка в тексті, коді чи таблиці — скажи, що не так. Інакше дай коротку корисну пораду (2-3 речення українською).']
-            )
-            self.msg_label.setText(res.text)
-        except Exception as e:
-            self.show()
-            self.msg_label.setText(f'Помилка: {str(e)[:80]}')
+        shot = ImageGrab.grab()
+        self.show()
+
+        prompt = 'Ти маленький помічник Кофі. Подивись на екран: якщо є помилка в тексті, коді чи таблиці — скажи, що не так. Інакше дай коротку корисну пораду (2-3 речення українською).'
+        self.worker = AIWorker(key, prompt, shot)
+        self.worker.finished.connect(self.on_ai_reply)
+        self.worker.start()
 
     def ask_text(self):
         txt = self.input_field.text().strip()
@@ -167,13 +185,10 @@ class ThermosAssistant(QWidget):
             return
         self.input_field.clear()
         self.msg_label.setText('Думаю... ☕')
-        QApplication.processEvents()
-        try:
-            client = genai.Client(api_key=key)
-            res = client.models.generate_content(model='gemini-2.5-flash', contents=f'Відповідай коротко (2-3 речення) українською як офісний помічник Кофі: {txt}')
-            self.msg_label.setText(res.text)
-        except Exception as e:
-            self.msg_label.setText(f'Помилка: {str(e)[:80]}')
+        prompt = f'Відповідай коротко (2-3 речення) українською як офісний помічник Кофі: {txt}'
+        self.worker = AIWorker(key, prompt)
+        self.worker.finished.connect(self.on_ai_reply)
+        self.worker.start()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
