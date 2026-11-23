@@ -6,6 +6,8 @@
   <title>Кофі (Coffee AI) — Офісний ШІ-помічник</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#b5651d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <style>
     * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
     body {
@@ -22,7 +24,7 @@
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      max-width: 380px;
+      max-width: 390px;
       width: 100%;
     }
     .bubble {
@@ -69,7 +71,7 @@
     }
     .msg-box::-webkit-scrollbar { width: 6px; }
     .msg-box::-webkit-scrollbar-thumb { background: #b5651d; border-radius: 3px; }
-    .row { display: flex; gap: 6px; margin-bottom: 8px; }
+    .row { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
     .row:last-child { margin-bottom: 0; }
     input[type="text"] {
       flex: 1;
@@ -85,7 +87,7 @@
       color: #ffffff;
       border: 2px solid #141414;
       border-radius: 10px;
-      padding: 7px 11px;
+      padding: 7px 10px;
       font-weight: 700;
       font-size: 12.5px;
       cursor: pointer;
@@ -97,6 +99,9 @@
     button:hover { background: #965215; }
     button.btn-gray { background: #757575; }
     button.btn-light { background: #f5ebe0; color: #141414; }
+    button.btn-light:hover { background: #eadbc8; }
+    button.btn-install { background: #2e7d32; color: #ffffff; }
+    button.btn-install:hover { background: #1b5e20; }
     .tasks-panel {
       display: none;
       background: #fdf9f6;
@@ -160,6 +165,7 @@
       <button onclick="analyzeScreen()" style="flex: 1;">👀 Що на екрані?</button>
       <button class="btn-light" onclick="toggleTasks()" title="Список справ">📋</button>
       <button class="btn-light" onclick="clearHistory()" title="Очистити пам'ять розмови">🧹</button>
+      <button class="btn-install" id="installBtn" onclick="installPWA()" title="Встановити Кофі як застосунок на ПК чи телефон">📲 Встановити</button>
       <button class="btn-light" onclick="toggleBubble()" title="Сховати діалог">🔽</button>
     </div>
   </div>
@@ -209,10 +215,51 @@
   const SYSTEM_RULE = 'Ти дружній офісний ШІ-помічник Кофі. Продовжуй поточний діалог природно українською мовою. НІКОЛИ не вітайся знову ("Привіт", "Я Кофі") — відповідай одразу по суті запитання.';
 
   let chatHistory = [];
+  let deferredPrompt = null;
   let lastMouseMove = Date.now();
   const pupilL = document.getElementById('pupilL');
   const pupilR = document.getElementById('pupilR');
   const cupChar = document.getElementById('cupChar');
+  const installBtn = document.getElementById('installBtn');
+
+  // Реєстрація Service Worker для PWA
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+  }
+
+  // Перехоплення події встановлення PWA
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'inline-flex';
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    installBtn.style.display = 'none';
+    document.getElementById('msgBox').textContent = 'Ура! Кофі встановлено як окремий застосунок 🎉';
+  });
+
+  // Якщо вже запущено як встановлений PWA-застосунок — ховаємо кнопку встановлення
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+    installBtn.style.display = 'none';
+  }
+
+  async function installPWA() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        deferredPrompt = null;
+        installBtn.style.display = 'none';
+      }
+    } else {
+      document.getElementById('msgBox').textContent =
+        'Щоб встановити Кофі як застосунок:\n• У Chrome / Edge: натисни іконку монітора зі стрілкою (⊕) у правому кінці адресного рядка або Меню (⋮) → «Встановити Кофі».\n• На iPhone / Safari: натисни «Поділитися» → «На екран Початок».';
+    }
+  }
 
   function movePupils(dx, dy) {
     pupilL.setAttribute('transform', `translate(${dx.toFixed(1)}, ${dy.toFixed(1)})`);
@@ -260,11 +307,9 @@
       userParts.push({ inline_data: { mime_type: 'image/jpeg', data: base64Image } });
     }
 
-    // Додаємо поточне повідомлення в історію (без важкого фото в довготривалій пам'яті)
     chatHistory.push({ role: 'user', parts: [{ text: userText }] });
     if (chatHistory.length > 14) chatHistory = chatHistory.slice(-14);
 
-    // Формуємо повний діалог: системне правило + історія + поточний запит (із фото, якщо є)
     const contents = [
       { role: 'user', parts: [{ text: SYSTEM_RULE }] },
       { role: 'model', parts: [{ text: 'Зрозумів, відповідаю одразу по суті без зайвих привітань.' }] },
