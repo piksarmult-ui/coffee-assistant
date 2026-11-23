@@ -1,15 +1,14 @@
-import sys, os, base64, ctypes
+import sys, os, base64, ctypes, math, random
 from ctypes import wintypes
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLineEdit, QFrame, QTextEdit)
 from PyQt6.QtCore import Qt, QTimer, QPoint, QRectF, QThread, pyqtSignal
-from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QPainterPath
+from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QCursor
 from PIL import ImageGrab, Image
 from google import genai
 
 KEY_FILE = os.path.join(os.path.expanduser('~'), '.coffee_secure.dat')
 
-# Шифрування ключа засобами Windows DPAPI (прив'язка до твого користувача Windows)
 class DATA_BLOB(ctypes.Structure):
     _fields_ = [('cbData', wintypes.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
 
@@ -66,14 +65,13 @@ class AIWorker(QThread):
                         return
                 except Exception as e:
                     last_err = str(e)
-                    # Якщо ліміт 429 або 404 — переходимо до наступної запасної моделі
                     if '429' in last_err or '404' in last_err or 'RESOURCE_EXHAUSTED' in last_err:
                         continue
                     if 'API_KEY_INVALID' in last_err or '400' in last_err:
                         break
 
             if '429' in last_err or 'RESOURCE_EXHAUSTED' in last_err:
-                self.finished.emit("Тимчасово вичерпано безкоштовний ліміт запитів Google API. Зачекай 1 хвилину і спробуй знову ☕")
+                self.finished.emit("Тимчасово вичерпано ліміт запитів Google API. Зачекай 1 хвилину ☕")
             else:
                 self.finished.emit(f"Помилка: {last_err[:90]}")
         except Exception as e:
@@ -88,12 +86,17 @@ class CartoonCoffeeAssistant(QWidget):
         self.drag_pos = QPoint()
         self.click_start = QPoint()
         self.bounce_step = 0
+        self.eye_dx = 0.0
+        self.eye_dy = 0.0
+        self.last_cursor = QCursor.pos()
+        self.idle_ticks = 0
+        self.idle_target = (0.0, 0.0)
         self.worker = None
         self.init_ui()
         
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self.update_animation)
-        self.anim_timer.start(100)
+        self.anim_timer.start(45)
 
     def init_ui(self):
         self.layout = QVBoxLayout(self)
@@ -115,7 +118,7 @@ class CartoonCoffeeAssistant(QWidget):
         bl.setSpacing(6)
 
         has_key = bool(get_key())
-        start_text = 'Привіт! Я Кофі ☕ Готовий допомагати!' if has_key else 'Перше налаштування: встав ключ Gemini API (він буде зашифрований і прихований):'
+        start_text = 'Привіт! Я Кофі ☕ Тепер у мене нові вії, і я стежу за курсором 👀' if has_key else 'Перше налаштування: встав ключ Gemini API (він буде зашифрований і прихований):'
         
         self.msg_box = QTextEdit()
         self.msg_box.setReadOnly(True)
@@ -124,7 +127,6 @@ class CartoonCoffeeAssistant(QWidget):
         self.msg_box.setMaximumHeight(130)
         bl.addWidget(self.msg_box)
 
-        # Поле з'являється ТІЛЬКИ 1 раз, якщо ключ ще не збережений, у вигляді зірочок •••••
         self.key_box = QWidget()
         key_row = QHBoxLayout(self.key_box)
         key_row.setContentsMargins(0, 0, 0, 0)
@@ -149,7 +151,6 @@ class CartoonCoffeeAssistant(QWidget):
         row1.addWidget(b_send)
         bl.addLayout(row1)
 
-        # Чиста панель кнопок БЕЗ кнопки ключа
         row2 = QHBoxLayout()
         b_scan = QPushButton('👀 Що не так?')
         b_scan.clicked.connect(self.analyze_screen)
@@ -177,22 +178,45 @@ class CartoonCoffeeAssistant(QWidget):
             open(KEY_FILE, 'w', encoding='utf-8').write(encrypted)
             self.key_input.clear()
             self.key_box.setVisible(False)
-            self.msg_box.setText('Ключ зашифровано та надійно збережено! Готовий до роботи ☕')
+            self.msg_box.setText('Ключ зашифровано та надійно збережено! ☕')
 
     def update_animation(self):
-        self.bounce_step = (self.bounce_step + 1) % 20
+        self.bounce_step = (self.bounce_step + 1) % 40
+        
+        cur = QCursor.pos()
+        if cur != self.last_cursor:
+            self.last_cursor = cur
+            self.idle_ticks = 0
+            global_eye = self.mapToGlobal(QPoint(self.width() - 62, self.height() - 60))
+            vx = cur.x() - global_eye.x()
+            vy = cur.y() - global_eye.y()
+            angle = math.atan2(vy, vx)
+            dist = min(2.8, math.hypot(vx, vy) / 42.0)
+            target_dx = math.cos(angle) * dist
+            target_dy = math.sin(angle) * dist * 1.4
+        else:
+            self.idle_ticks += 1
+            if self.idle_ticks % 20 == 0:
+                self.idle_target = random.choice([
+                    (-2.6, -0.6), (2.6, -0.6), (0.0, -2.8), (-2.2, 2.2), (2.2, 2.2), (0.0, 0.0)
+                ])
+            target_dx, target_dy = self.idle_target
+
+        self.eye_dx += (target_dx - self.eye_dx) * 0.35
+        self.eye_dy += (target_dy - self.eye_dy) * 0.35
         self.update()
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        dy = -2 if self.bounce_step < 10 else 0
+        dy = -2 if self.bounce_step < 20 else 0
         cx = self.width() - 62
         cy = self.height() - 115 + dy
 
         outline = QPen(QColor('#141414'), 2.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
 
+        # Білий корпус стаканчика
         p.setPen(outline)
         p.setBrush(QColor('#ffffff'))
         cup = QPainterPath()
@@ -203,6 +227,7 @@ class CartoonCoffeeAssistant(QWidget):
         cup.closeSubpath()
         p.drawPath(cup)
 
+        # Тінь праворуч
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor('#e0e0e0'))
         shadow = QPainterPath()
@@ -213,6 +238,7 @@ class CartoonCoffeeAssistant(QWidget):
         shadow.closeSubpath()
         p.drawPath(shadow)
 
+        # Карамельний тримач
         p.setPen(outline)
         p.setBrush(QColor('#b5651d'))
         sleeve = QPainterPath()
@@ -223,9 +249,11 @@ class CartoonCoffeeAssistant(QWidget):
         sleeve.closeSubpath()
         p.drawPath(sleeve)
 
+        # Блік на тримачі
         p.setPen(QPen(QColor('#e6a15c'), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(int(cx + 17), int(cy + 43), int(cx + 15), int(cy + 73))
 
+        # Чорна кришка
         p.setPen(outline)
         p.setBrush(QColor('#1c1c1c'))
         p.drawRoundedRect(QRectF(cx - 32, cy + 12, 64, 10), 5, 5)
@@ -237,36 +265,52 @@ class CartoonCoffeeAssistant(QWidget):
         lid_top.closeSubpath()
         p.drawPath(lid_top)
 
+        # Бліки на кришці
         p.setPen(QPen(QColor('#ffffff'), 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawArc(QRectF(cx - 22, cy + 4, 24, 6), 120 * 16, 60 * 16)
         p.drawLine(int(cx - 27), int(cy + 16), int(cx - 10), int(cy + 16))
 
-        p.setPen(QPen(QColor('#141414'), 2.3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawArc(QRectF(cx - 17, cy + 41, 13, 6), 20 * 16, 140 * 16)
-        p.drawArc(QRectF(cx + 4, cy + 41, 13, 6), 20 * 16, 140 * 16)
+        # --- НОВІ ВИРАЗНІ ОЧІ З ВІЯМИ (як на референсі) ---
+        brow_shift = self.eye_dy * 0.45
+        p.setPen(QPen(QColor('#141414'), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        # Високі дугоподібні брови
+        p.drawArc(QRectF(cx - 16, cy + 39 + brow_shift, 12, 6), 25 * 16, 130 * 16)
+        p.drawArc(QRectF(cx + 4, cy + 39 + brow_shift, 12, 6), 25 * 16, 130 * 16)
 
-        p.setPen(QPen(QColor('#141414'), 2))
+        # Вії лівого ока (3 вигнуті вії зліва зверху)
+        lash_pen = QPen(QColor('#141414'), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        p.setPen(lash_pen)
+        p.drawLine(int(cx - 14), int(cy + 48), int(cx - 18), int(cy + 45))
+        p.drawLine(int(cx - 15), int(cy + 51), int(cx - 20), int(cy + 49))
+        p.drawLine(int(cx - 15), int(cy + 54), int(cx - 19), int(cy + 53))
+
+        # Вії правого ока (3 вигнуті вії справа зверху)
+        p.drawLine(int(cx + 14), int(cy + 48), int(cx + 18), int(cy + 45))
+        p.drawLine(int(cx + 15), int(cy + 51), int(cx + 20), int(cy + 49))
+        p.drawLine(int(cx + 15), int(cy + 54), int(cx + 19), int(cy + 53))
+
+        # Великі витягнуті білки очей, що торкаються посередині
+        p.setPen(QPen(QColor('#141414'), 2.1))
         p.setBrush(QColor('#ffffff'))
-        p.drawEllipse(QRectF(cx - 16, cy + 46, 13, 17))
-        p.drawEllipse(QRectF(cx + 3, cy + 46, 13, 17))
+        p.drawEllipse(QRectF(cx - 14.5, cy + 44, 14.5, 21))
+        p.drawEllipse(QRectF(cx, cy + 44, 14.5, 21))
 
+        # Великі рухомі зіниці з трикутним вирізом зліва (pie-cut)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor('#141414'))
-        p.drawPie(QRectF(cx - 11, cy + 49, 7, 11), 35 * 16, 290 * 16)
-        p.drawPie(QRectF(cx + 8, cy + 49, 7, 11), 35 * 16, 290 * 16)
+        p.drawPie(QRectF(cx - 10.5 + self.eye_dx, cy + 48 + self.eye_dy, 8.2, 13.5), 215 * 16, 290 * 16)
+        p.drawPie(QRectF(cx + 3.5 + self.eye_dx, cy + 48 + self.eye_dy, 8.2, 13.5), 215 * 16, 290 * 16)
 
-        p.setPen(QPen(QColor('#141414'), 2))
-        p.setBrush(QColor('#212121'))
-        mouth = QPainterPath()
-        mouth.moveTo(cx - 9, cy + 67)
-        mouth.quadTo(cx, cy + 69, cx + 9, cy + 67)
-        mouth.quadTo(cx + 8, cy + 77, cx, cy + 77)
-        mouth.quadTo(cx - 8, cy + 77, cx - 9, cy + 67)
-        p.drawPath(mouth)
-
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor('#e53935'))
-        p.drawEllipse(QRectF(cx - 4, cy + 71, 8, 5))
+        # Добра мультяшна усмішка зі щічками
+        p.setPen(QPen(QColor('#141414'), 2.1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        smile = QPainterPath()
+        smile.moveTo(cx - 11, cy + 68)
+        smile.quadTo(cx, cy + 77, cx + 11, cy + 68)
+        p.drawPath(smile)
+        # Маленькі ямочки-дужки по краях усмішки
+        p.drawArc(QRectF(cx - 13, cy + 66, 4, 4), 110 * 16, 140 * 16)
+        p.drawArc(QRectF(cx + 9, cy + 66, 4, 4), 290 * 16, 140 * 16)
 
     def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
