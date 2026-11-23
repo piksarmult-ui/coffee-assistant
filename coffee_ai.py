@@ -26,32 +26,29 @@ class AIWorker(QThread):
             client = genai.Client(api_key=self.key)
             contents = [self.image, self.prompt] if self.image else self.prompt
             
-            # Пріоритет на найновішу легку модель + автоматичний пошук доступних моделей
-            models_to_try = [
-                'gemini-3.1-flash-lite-preview',
-                'gemini-3-flash-preview',
-                'gemini-2.5-flash-lite',
-                'gemini-2.5-flash'
-            ]
+            # Збираємо актуальні моделі 3-го покоління та всі доступні моделі для цього ключа
+            candidates = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-3.1-pro-preview']
             try:
                 for m in client.models.list():
                     name = m.name.replace('models/', '')
-                    if ('lite' in name or 'flash' in name) and name not in models_to_try:
-                        models_to_try.append(name)
+                    if 'gemini' in name and 'embedding' not in name and 'imagen' not in name and name not in candidates:
+                        candidates.append(name)
             except Exception:
                 pass
 
-            last_err = ""
-            for model_name in models_to_try:
+            last_err = "Не знайдено робочої моделі"
+            for model_name in candidates:
                 try:
                     res = client.models.generate_content(model=model_name, contents=contents)
-                    self.finished.emit(res.text)
-                    return
+                    if res and res.text:
+                        self.finished.emit(res.text)
+                        return
                 except Exception as e:
                     last_err = str(e)
-                    if '404' in last_err or 'not found' in last_err.lower():
-                        continue
-                    break
+                    # Якщо проблема саме в ключі — зупиняємось одразу
+                    if 'API_KEY_INVALID' in last_err or '400' in last_err:
+                        break
+                    continue
 
             self.finished.emit(f"Помилка: {last_err[:100]}")
         except Exception as e:
@@ -90,7 +87,6 @@ class ThermosAssistant(QWidget):
         self.msg_label.setWordWrap(True)
         bl.addWidget(self.msg_label)
 
-        # Вбудований блок для введення API-ключа
         self.key_box = QWidget()
         key_row = QHBoxLayout(self.key_box)
         key_row.setContentsMargins(0, 0, 0, 0)
@@ -105,7 +101,6 @@ class ThermosAssistant(QWidget):
         self.key_box.setVisible(not has_key)
         bl.addWidget(self.key_box)
 
-        # Рядок запиту
         row1 = QHBoxLayout()
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText('Запитай або запиши справу...')
@@ -116,7 +111,6 @@ class ThermosAssistant(QWidget):
         row1.addWidget(b_send)
         bl.addLayout(row1)
 
-        # Кнопки дій
         row2 = QHBoxLayout()
         b_scan = QPushButton('👀 Що не так на екрані?')
         b_scan.clicked.connect(self.analyze_screen)
