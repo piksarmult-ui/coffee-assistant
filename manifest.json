@@ -1,0 +1,15 @@
+{
+  "name": "Кофі — Твій ШІ-помічник",
+  "short_name": "Кофі",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4ebe1",
+  "theme_color": "#6f4e37",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/924/924514.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
