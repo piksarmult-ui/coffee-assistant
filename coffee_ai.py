@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt, QTimer, QPoint, QRectF, QThread, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QCursor
 from PIL import ImageGrab, Image
 
-PROXY_URL = 'https://coffee-proxy.piksarmult.workers.dev'
+PROXY_URL = 'https://gentle-base-e6e8coffee-proxy.piksarmult.workers.dev'
 
 class AIWorker(QThread):
     finished = pyqtSignal(str)
