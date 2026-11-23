@@ -1,4 +1,5 @@
-import sys, os
+import sys, os, base64, ctypes
+from ctypes import wintypes
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLineEdit, QFrame, QTextEdit)
 from PyQt6.QtCore import Qt, QTimer, QPoint, QRectF, QThread, pyqtSignal
@@ -6,11 +7,38 @@ from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QPainterPath
 from PIL import ImageGrab, Image
 from google import genai
 
-KEY_FILE = os.path.join(os.path.expanduser('~'), 'coffee_key.txt')
+KEY_FILE = os.path.join(os.path.expanduser('~'), '.coffee_secure.dat')
 
-def get_key():
+# Шифрування ключа засобами Windows DPAPI (прив'язка до твого користувача Windows)
+class DATA_BLOB(ctypes.Structure):
+    _fields_ = [('cbData', wintypes.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
+
+def protect_str(text: str) -> str:
+    data = text.encode('utf-8')
+    blob_in = DATA_BLOB(len(data), ctypes.cast(ctypes.create_string_buffer(data), ctypes.POINTER(ctypes.c_char)))
+    blob_out = DATA_BLOB()
+    if ctypes.windll.crypt32.CryptProtectData(ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)):
+        raw = ctypes.string_at(blob_out.pbData, blob_out.cbData)
+        ctypes.windll.kernel32.LocalFree(blob_out.pbData)
+        return base64.b64encode(raw).decode('ascii')
+    return ''
+
+def unprotect_str(enc: str) -> str:
+    try:
+        raw = base64.b64decode(enc.encode('ascii'))
+        blob_in = DATA_BLOB(len(raw), ctypes.cast(ctypes.create_string_buffer(raw), ctypes.POINTER(ctypes.c_char)))
+        blob_out = DATA_BLOB()
+        if ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)):
+            res = ctypes.string_at(blob_out.pbData, blob_out.cbData).decode('utf-8')
+            ctypes.windll.kernel32.LocalFree(blob_out.pbData)
+            return res
+    except Exception:
+        pass
+    return ''
+
+def get_key() -> str:
     if os.path.exists(KEY_FILE):
-        return open(KEY_FILE, 'r', encoding='utf-8').read().strip()
+        return unprotect_str(open(KEY_FILE, 'r', encoding='utf-8').read().strip())
     return ''
 
 class AIWorker(QThread):
@@ -27,32 +55,29 @@ class AIWorker(QThread):
             client = genai.Client(api_key=self.key)
             contents = [self.image, self.prompt] if self.image else self.prompt
             
-            candidates = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash']
-            try:
-                for m in client.models.list():
-                    name = m.name.replace('models/', '')
-                    if ('lite' in name or 'flash' in name) and name not in candidates:
-                        candidates.append(name)
-            except Exception:
-                pass
+            candidates = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash-lite', 'gemini-2.5-flash']
+            last_err = "Не вдалося отримати відповідь"
 
-            last_err = "Не знайдено моделі"
             for model_name in candidates:
                 try:
                     res = client.models.generate_content(model=model_name, contents=contents)
                     if res and res.text:
-                        clean_text = res.text.replace('**', '').strip()
-                        self.finished.emit(clean_text)
+                        self.finished.emit(res.text.replace('**', '').strip())
                         return
                 except Exception as e:
                     last_err = str(e)
+                    # Якщо ліміт 429 або 404 — переходимо до наступної запасної моделі
+                    if '429' in last_err or '404' in last_err or 'RESOURCE_EXHAUSTED' in last_err:
+                        continue
                     if 'API_KEY_INVALID' in last_err or '400' in last_err:
                         break
-                    continue
 
-            self.finished.emit(f"Помилка: {last_err[:100]}")
+            if '429' in last_err or 'RESOURCE_EXHAUSTED' in last_err:
+                self.finished.emit("Тимчасово вичерпано безкоштовний ліміт запитів Google API. Зачекай 1 хвилину і спробуй знову ☕")
+            else:
+                self.finished.emit(f"Помилка: {last_err[:90]}")
         except Exception as e:
-            self.finished.emit(f"Помилка: {str(e)[:100]}")
+            self.finished.emit(f"Помилка: {str(e)[:90]}")
 
 class CartoonCoffeeAssistant(QWidget):
     def __init__(self):
@@ -79,13 +104,7 @@ class CartoonCoffeeAssistant(QWidget):
         self.bubble.setObjectName("mainBubble")
         self.bubble.setStyleSheet('''
             QFrame#mainBubble { background-color: #ffffff; border: 2.5px solid #1a1a1a; border-radius: 18px; padding: 8px; }
-            QTextEdit { 
-                color: #1a1a1a; 
-                font-family: 'Segoe UI'; 
-                font-size: 12px; 
-                border: none; 
-                background: transparent; 
-            }
+            QTextEdit { color: #1a1a1a; font-family: 'Segoe UI'; font-size: 12px; border: none; background: transparent; }
             QScrollBar:vertical { border: none; background: #f5ebe0; width: 6px; border-radius: 3px; }
             QScrollBar::handle:vertical { background: #b5651d; border-radius: 3px; }
             QLineEdit { border: 1.5px solid #bcaaa4; border-radius: 8px; padding: 5px 8px; font-size: 12px; color: #1a1a1a; background: #fff; }
@@ -96,7 +115,7 @@ class CartoonCoffeeAssistant(QWidget):
         bl.setSpacing(6)
 
         has_key = bool(get_key())
-        start_text = 'Привіт! Я Кофі ☕ Натисни на мене або «🔽», щоб сховати віконце!' if has_key else 'Встав свій ключ Gemini API у поле нижче та натисни «ОК»:'
+        start_text = 'Привіт! Я Кофі ☕ Готовий допомагати!' if has_key else 'Перше налаштування: встав ключ Gemini API (він буде зашифрований і прихований):'
         
         self.msg_box = QTextEdit()
         self.msg_box.setReadOnly(True)
@@ -105,12 +124,13 @@ class CartoonCoffeeAssistant(QWidget):
         self.msg_box.setMaximumHeight(130)
         bl.addWidget(self.msg_box)
 
+        # Поле з'являється ТІЛЬКИ 1 раз, якщо ключ ще не збережений, у вигляді зірочок •••••
         self.key_box = QWidget()
         key_row = QHBoxLayout(self.key_box)
         key_row.setContentsMargins(0, 0, 0, 0)
         self.key_input = QLineEdit()
-        self.key_input.setPlaceholderText('Встав AIza...')
-        self.key_input.setText(get_key())
+        self.key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.key_input.setPlaceholderText('Встав ключ (буде приховано)...')
         key_row.addWidget(self.key_input)
         b_save_key = QPushButton('ОК')
         b_save_key.setStyleSheet('background-color: #2e7d32;')
@@ -129,20 +149,16 @@ class CartoonCoffeeAssistant(QWidget):
         row1.addWidget(b_send)
         bl.addLayout(row1)
 
+        # Чиста панель кнопок БЕЗ кнопки ключа
         row2 = QHBoxLayout()
         b_scan = QPushButton('👀 Що не так?')
         b_scan.clicked.connect(self.analyze_screen)
         row2.addWidget(b_scan)
 
         b_hide = QPushButton('🔽')
-        b_hide.setToolTip('Сховати діалог (залишити лише стаканчик)')
+        b_hide.setToolTip('Сховати віконце')
         b_hide.clicked.connect(lambda: self.bubble.setVisible(False))
         row2.addWidget(b_hide)
-
-        b_key = QPushButton('🔑')
-        b_key.setToolTip('Ключ API')
-        b_key.clicked.connect(lambda: self.key_box.setVisible(not self.key_box.isVisible()))
-        row2.addWidget(b_key)
 
         b_close = QPushButton('✖')
         b_close.setStyleSheet('background-color: #757575;')
@@ -157,9 +173,11 @@ class CartoonCoffeeAssistant(QWidget):
     def save_key(self):
         val = self.key_input.text().strip()
         if val:
-            open(KEY_FILE, 'w', encoding='utf-8').write(val)
+            encrypted = protect_str(val)
+            open(KEY_FILE, 'w', encoding='utf-8').write(encrypted)
+            self.key_input.clear()
             self.key_box.setVisible(False)
-            self.msg_box.setText('Ключ збережено! Готовий допомагати ☕')
+            self.msg_box.setText('Ключ зашифровано та надійно збережено! Готовий до роботи ☕')
 
     def update_animation(self):
         self.bounce_step = (self.bounce_step + 1) % 20
@@ -261,7 +279,6 @@ class CartoonCoffeeAssistant(QWidget):
 
     def mouseReleaseEvent(self, e):
         if (e.globalPosition().toPoint() - self.click_start).manhattanLength() < 8:
-            # Перевіряємо, що клікнули саме по області стаканчика внизу праворуч
             pos = e.position().toPoint()
             if pos.x() > self.width() - 120 and pos.y() > self.height() - 135:
                 self.bubble.setVisible(not self.bubble.isVisible())
@@ -273,9 +290,8 @@ class CartoonCoffeeAssistant(QWidget):
         key = get_key()
         if not key:
             self.key_box.setVisible(True)
-            self.msg_box.setText('Спочатку встав API-ключ у поле нижче 👇')
             return
-        self.msg_box.setText('Швидко дивлюся на екран... ⚡👀')
+        self.msg_box.setText('Дивлюся на екран... ⚡👀')
         self.hide()
         QApplication.processEvents()
         shot = ImageGrab.grab()
@@ -296,7 +312,6 @@ class CartoonCoffeeAssistant(QWidget):
         key = get_key()
         if not key:
             self.key_box.setVisible(True)
-            self.msg_box.setText('Спочатку встав API-ключ у поле нижче 👇')
             return
         self.input_field.clear()
         self.msg_box.setText('Думаю... ⚡')
