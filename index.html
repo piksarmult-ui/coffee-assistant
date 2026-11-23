@@ -141,7 +141,7 @@
       <span id="modelBadge" style="font-size: 11px; color: #757575;">Gemini 3.1 Lite</span>
     </div>
 
-    <div class="msg-box" id="msgBox">Привіт! Я Кофі ☕ Завжди на зв’язку і стежу за курсором 👀 Запитай щось або покажи екран!</div>
+    <div class="msg-box" id="msgBox">Привіт! Я Кофі ☕ Тепер я пам’ятаю нашу розмову. Про що поспілкуємось?</div>
 
     <div class="tasks-panel" id="tasksPanel">
       <div class="row" style="margin-bottom: 6px;">
@@ -159,6 +159,7 @@
     <div class="row">
       <button onclick="analyzeScreen()" style="flex: 1;">👀 Що на екрані?</button>
       <button class="btn-light" onclick="toggleTasks()" title="Список справ">📋</button>
+      <button class="btn-light" onclick="clearHistory()" title="Очистити пам'ять розмови">🧹</button>
       <button class="btn-light" onclick="toggleBubble()" title="Сховати діалог">🔽</button>
     </div>
   </div>
@@ -174,11 +175,9 @@
       <path d="M22 10 Q32 7 42 9" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
       <line x1="17" y1="20" x2="34" y2="20" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
 
-      <!-- Високі брови -->
       <path d="M26 42 Q32 38 39 42" fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="round"/>
       <path d="M47 42 Q54 38 60 42" fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="round"/>
 
-      <!-- Вії ліворуч та праворуч -->
       <line x1="28" y1="50" x2="23" y2="47" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
       <line x1="27" y1="53" x2="21" y2="51" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
       <line x1="27" y1="56" x2="22" y2="56" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
@@ -187,11 +186,9 @@
       <line x1="59" y1="53" x2="65" y2="51" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
       <line x1="59" y1="56" x2="64" y2="56" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
 
-      <!-- Великі зближені білки очей -->
       <ellipse cx="35.5" cy="57" rx="7.5" ry="11" fill="#ffffff" stroke="#141414" stroke-width="2.2"/>
       <ellipse cx="50.5" cy="57" rx="7.5" ry="11" fill="#ffffff" stroke="#141414" stroke-width="2.2"/>
 
-      <!-- Рухомі ретро-зіниці -->
       <g id="pupilL">
         <path d="M35.5 57 L31.5 53 A4.5 6.8 0 1 1 31.5 61 Z" fill="#141414"/>
       </g>
@@ -199,7 +196,6 @@
         <path d="M50.5 57 L46.5 53 A4.5 6.8 0 1 1 46.5 61 Z" fill="#141414"/>
       </g>
 
-      <!-- Добра усмішка зі щічками -->
       <path d="M31 71 Q43 80 55 71" fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="round"/>
       <path d="M30 69 Q28 71 30 73" fill="none" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
       <path d="M56 69 Q58 71 56 73" fill="none" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
@@ -210,7 +206,9 @@
 <script>
   const PROXY_URL = 'https://gentle-base-e6e8coffee-proxy.piksarmult.workers.dev';
   const TASKS_KEY = 'coffee_ai_tasks_v2';
+  const SYSTEM_RULE = 'Ти дружній офісний ШІ-помічник Кофі. Продовжуй поточний діалог природно українською мовою. НІКОЛИ не вітайся знову ("Привіт", "Я Кофі") — відповідай одразу по суті запитання.';
 
+  let chatHistory = [];
   let lastMouseMove = Date.now();
   const pupilL = document.getElementById('pupilL');
   const pupilR = document.getElementById('pupilR');
@@ -251,28 +249,49 @@
     document.getElementById('bubble').classList.toggle('hidden');
   }
 
-  async function callGemini(promptText, base64Image = null) {
-    const parts = [{ text: promptText }];
+  function clearHistory() {
+    chatHistory = [];
+    document.getElementById('msgBox').textContent = 'Пам’ять розмови очищено 🧹 Про що поговоримо далі?';
+  }
+
+  async function callGemini(userText, base64Image = null) {
+    const userParts = [{ text: userText }];
     if (base64Image) {
-      parts.push({ inline_data: { mime_type: 'image/jpeg', data: base64Image } });
+      userParts.push({ inline_data: { mime_type: 'image/jpeg', data: base64Image } });
     }
+
+    // Додаємо поточне повідомлення в історію (без важкого фото в довготривалій пам'яті)
+    chatHistory.push({ role: 'user', parts: [{ text: userText }] });
+    if (chatHistory.length > 14) chatHistory = chatHistory.slice(-14);
+
+    // Формуємо повний діалог: системне правило + історія + поточний запит (із фото, якщо є)
+    const contents = [
+      { role: 'user', parts: [{ text: SYSTEM_RULE }] },
+      { role: 'model', parts: [{ text: 'Зрозумів, відповідаю одразу по суті без зайвих привітань.' }] },
+      ...chatHistory.slice(0, -1),
+      { role: 'user', parts: userParts }
+    ];
 
     try {
       const res = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts }] })
+        body: JSON.stringify({ contents })
       });
       const data = await res.json();
       if (res.ok && data.text) {
+        const reply = data.text.replace(/\*\*/g, '').trim();
+        chatHistory.push({ role: 'model', parts: [{ text: reply }] });
         if (data.model) {
           document.getElementById('modelBadge').textContent = data.model.replace('-preview', '');
         }
-        document.getElementById('msgBox').textContent = data.text.replace(/\*\*/g, '').trim();
+        document.getElementById('msgBox').textContent = reply;
       } else {
+        chatHistory.pop();
         document.getElementById('msgBox').textContent = 'Помилка: ' + (data.error || 'Сервер не відповів');
       }
     } catch (e) {
+      chatHistory.pop();
       document.getElementById('msgBox').textContent = 'Помилка з’єднання: ' + e.message;
     }
   }
@@ -283,7 +302,7 @@
     if (!text) return;
     input.value = '';
     document.getElementById('msgBox').textContent = 'Думаю... ⚡';
-    callGemini(`Ти маленький офісний помічник Кофі. Відповідай стисло українською: ${text}`);
+    callGemini(text);
   }
 
   async function analyzeScreen() {
@@ -304,7 +323,7 @@
       const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
       document.getElementById('msgBox').textContent = 'Швидко дивлюся на екран... ⚡👀';
-      await callGemini('Ти маленький офісний помічник Кофі. Подивись на екран: якщо є помилка — коротко вкажи її. Інакше дай 1 коротку пораду (до 2 речень українською).', base64);
+      await callGemini('Подивись на мій екран: якщо є помилка — коротко вкажи її. Інакше дай 1 коротку пораду (до 2 речень).', base64);
     } catch (e) {
       document.getElementById('msgBox').textContent = 'Перевірку екрана скасовано.';
     }
