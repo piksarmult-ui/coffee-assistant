@@ -61,6 +61,7 @@ class CartoonCoffeeAssistant(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.resize(340, 430)
         self.drag_pos = QPoint()
+        self.click_start = QPoint()
         self.bounce_step = 0
         self.worker = None
         self.init_ui()
@@ -85,27 +86,18 @@ class CartoonCoffeeAssistant(QWidget):
                 border: none; 
                 background: transparent; 
             }
-            QScrollBar:vertical {
-                border: none;
-                background: #f5ebe0;
-                width: 6px;
-                border-radius: 3px;
-            }
-            QScrollBar::handle:vertical {
-                background: #b5651d;
-                border-radius: 3px;
-            }
+            QScrollBar:vertical { border: none; background: #f5ebe0; width: 6px; border-radius: 3px; }
+            QScrollBar::handle:vertical { background: #b5651d; border-radius: 3px; }
             QLineEdit { border: 1.5px solid #bcaaa4; border-radius: 8px; padding: 5px 8px; font-size: 12px; color: #1a1a1a; background: #fff; }
-            QPushButton { background-color: #b5651d; color: white; border: 1.5px solid #1a1a1a; border-radius: 8px; padding: 5px 9px; font-weight: bold; font-size: 11px; }
+            QPushButton { background-color: #b5651d; color: white; border: 1.5px solid #1a1a1a; border-radius: 8px; padding: 5px 8px; font-weight: bold; font-size: 11px; }
             QPushButton:hover { background-color: #965215; }
         ''')
         bl = QVBoxLayout(self.bubble)
         bl.setSpacing(6)
 
         has_key = bool(get_key())
-        start_text = 'Привіт! Я Кофі ☕ Натисни на мене, щоб сховати віконце, або запитай щось!' if has_key else 'Встав свій ключ Gemini API у поле нижче та натисни «ОК»:'
+        start_text = 'Привіт! Я Кофі ☕ Натисни на мене або «🔽», щоб сховати віконце!' if has_key else 'Встав свій ключ Gemini API у поле нижче та натисни «ОК»:'
         
-        # Повноцінне поле з прокруткою коліщатком та можливістю копіювати текст
         self.msg_box = QTextEdit()
         self.msg_box.setReadOnly(True)
         self.msg_box.setText(start_text)
@@ -113,7 +105,6 @@ class CartoonCoffeeAssistant(QWidget):
         self.msg_box.setMaximumHeight(130)
         bl.addWidget(self.msg_box)
 
-        # Поле для ключа
         self.key_box = QWidget()
         key_row = QHBoxLayout(self.key_box)
         key_row.setContentsMargins(0, 0, 0, 0)
@@ -128,7 +119,6 @@ class CartoonCoffeeAssistant(QWidget):
         self.key_box.setVisible(not has_key)
         bl.addWidget(self.key_box)
 
-        # Рядок чату
         row1 = QHBoxLayout()
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText('Напиши запитання...')
@@ -139,17 +129,24 @@ class CartoonCoffeeAssistant(QWidget):
         row1.addWidget(b_send)
         bl.addLayout(row1)
 
-        # Кнопки дій
         row2 = QHBoxLayout()
-        b_scan = QPushButton('👀 Що не так на екрані?')
+        b_scan = QPushButton('👀 Що не так?')
         b_scan.clicked.connect(self.analyze_screen)
         row2.addWidget(b_scan)
+
+        b_hide = QPushButton('🔽')
+        b_hide.setToolTip('Сховати діалог (залишити лише стаканчик)')
+        b_hide.clicked.connect(lambda: self.bubble.setVisible(False))
+        row2.addWidget(b_hide)
+
         b_key = QPushButton('🔑')
         b_key.setToolTip('Ключ API')
         b_key.clicked.connect(lambda: self.key_box.setVisible(not self.key_box.isVisible()))
         row2.addWidget(b_key)
+
         b_close = QPushButton('✖')
-        b_close.setStyleSheet('background-color: #757575; padding: 5px 8px;')
+        b_close.setStyleSheet('background-color: #757575;')
+        b_close.setToolTip('Закрити програму')
         b_close.clicked.connect(QApplication.quit)
         row2.addWidget(b_close)
         bl.addLayout(row2)
@@ -178,7 +175,6 @@ class CartoonCoffeeAssistant(QWidget):
 
         outline = QPen(QColor('#141414'), 2.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
 
-        # 1. Білий корпус стаканчика
         p.setPen(outline)
         p.setBrush(QColor('#ffffff'))
         cup = QPainterPath()
@@ -189,7 +185,6 @@ class CartoonCoffeeAssistant(QWidget):
         cup.closeSubpath()
         p.drawPath(cup)
 
-        # Тінь праворуч
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor('#e0e0e0'))
         shadow = QPainterPath()
@@ -200,7 +195,6 @@ class CartoonCoffeeAssistant(QWidget):
         shadow.closeSubpath()
         p.drawPath(shadow)
 
-        # 2. Карамельно-коричневий тримач
         p.setPen(outline)
         p.setBrush(QColor('#b5651d'))
         sleeve = QPainterPath()
@@ -211,11 +205,9 @@ class CartoonCoffeeAssistant(QWidget):
         sleeve.closeSubpath()
         p.drawPath(sleeve)
 
-        # Блік на тримачі
         p.setPen(QPen(QColor('#e6a15c'), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(int(cx + 17), int(cy + 43), int(cx + 15), int(cy + 73))
 
-        # 3. Чорна кришка
         p.setPen(outline)
         p.setBrush(QColor('#1c1c1c'))
         p.drawRoundedRect(QRectF(cx - 32, cy + 12, 64, 10), 5, 5)
@@ -227,12 +219,10 @@ class CartoonCoffeeAssistant(QWidget):
         lid_top.closeSubpath()
         p.drawPath(lid_top)
 
-        # Бліки на кришці
         p.setPen(QPen(QColor('#ffffff'), 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawArc(QRectF(cx - 22, cy + 4, 24, 6), 120 * 16, 60 * 16)
         p.drawLine(int(cx - 27), int(cy + 16), int(cx - 10), int(cy + 16))
 
-        # 4. Мультяшні очі та брови
         p.setPen(QPen(QColor('#141414'), 2.3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawArc(QRectF(cx - 17, cy + 41, 13, 6), 20 * 16, 140 * 16)
         p.drawArc(QRectF(cx + 4, cy + 41, 13, 6), 20 * 16, 140 * 16)
@@ -247,7 +237,6 @@ class CartoonCoffeeAssistant(QWidget):
         p.drawPie(QRectF(cx - 11, cy + 49, 7, 11), 35 * 16, 290 * 16)
         p.drawPie(QRectF(cx + 8, cy + 49, 7, 11), 35 * 16, 290 * 16)
 
-        # 5. Ротик з язичком
         p.setPen(QPen(QColor('#141414'), 2))
         p.setBrush(QColor('#212121'))
         mouth = QPainterPath()
@@ -271,8 +260,11 @@ class CartoonCoffeeAssistant(QWidget):
             self.move(e.globalPosition().toPoint() - self.drag_pos)
 
     def mouseReleaseEvent(self, e):
-        if (e.globalPosition().toPoint() - self.click_start).manhattanLength() < 5:
-            self.bubble.setVisible(not self.bubble.isVisible())
+        if (e.globalPosition().toPoint() - self.click_start).manhattanLength() < 8:
+            # Перевіряємо, що клікнули саме по області стаканчика внизу праворуч
+            pos = e.position().toPoint()
+            if pos.x() > self.width() - 120 and pos.y() > self.height() - 135:
+                self.bubble.setVisible(not self.bubble.isVisible())
 
     def on_ai_reply(self, text):
         self.msg_box.setText(text)
