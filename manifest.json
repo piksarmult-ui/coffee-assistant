@@ -1,15 +1,18 @@
 {
-  "name": "Кофі — Твій ШІ-помічник",
-  "short_name": "Кофі",
+  "name": "Кофі — Офісний ШІ-помічник",
+  "short_name": "Кофі AI",
+  "description": "Твій персональний офісний ШІ-помічник із пам'яттю діалогу та аналізом екрана",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#f4ebe1",
-  "theme_color": "#6f4e37",
+  "background_color": "#fdf8f5",
+  "theme_color": "#b5651d",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/924/924514.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%23fdf8f5'/%3E%3Cpath d='M36 34 L92 34 L86 112 Q64 118 42 112 Z' fill='%23ffffff' stroke='%23141414' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M37 50 Q64 55 91 50 L88 94 Q64 99 40 94 Z' fill='%23b5651d' stroke='%23141414' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M34 26 L39 17 Q64 13 89 17 L94 26 Z' fill='%231c1c1c' stroke='%23141414' stroke-width='4'/%3E%3Crect x='31' y='25' width='66' height='10' rx='5' fill='%231c1c1c' stroke='%23141414' stroke-width='4'/%3E%3Cellipse cx='56' cy='67' rx='7.5' ry='11' fill='%23ffffff' stroke='%23141414' stroke-width='3'/%3E%3Cellipse cx='72' cy='67' rx='7.5' ry='11' fill='%23ffffff' stroke='%23141414' stroke-width='3'/%3E%3Ccircle cx='56' cy='67' r='4.5' fill='%23141414'/%3E%3Ccircle cx='72' cy='67' r='4.5' fill='%23141414'/%3E%3Cpath d='M51 81 Q64 90 77 81' fill='none' stroke='%23141414' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }
