@@ -1,5 +1,5 @@
 import sys, os
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QLabel, QFrame, QInputDialog
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QLabel, QFrame
 from PyQt6.QtCore import Qt, QTimer, QPoint, QRectF, QThread, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QLinearGradient, QPainterPath
 from PIL import ImageGrab
@@ -12,7 +12,6 @@ def get_key():
         return open(KEY_FILE, 'r', encoding='utf-8').read().strip()
     return ''
 
-# Окремий фоновий потік для ШІ, щоб інтерфейс ніколи не зависав
 class AIWorker(QThread):
     finished = pyqtSignal(str)
 
@@ -34,9 +33,9 @@ class AIWorker(QThread):
 class ThermosAssistant(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(350, 430)
+        self.resize(350, 460)
         self.drag_pos = QPoint()
         self.steam_offset = 0
         self.worker = None
@@ -53,16 +52,33 @@ class ThermosAssistant(QWidget):
         self.bubble.setStyleSheet('''
             QFrame { background-color: #ffffff; border: 2px solid #6f4e37; border-radius: 16px; padding: 8px; }
             QLabel { color: #3e2723; font-family: Segoe UI; font-size: 12px; border: none; }
-            QLineEdit { border: 1px solid #d7ccc8; border-radius: 8px; padding: 5px 8px; font-size: 12px; color: #3e2723; }
+            QLineEdit { border: 1px solid #d7ccc8; border-radius: 8px; padding: 5px 8px; font-size: 12px; color: #3e2723; background: #fff; }
             QPushButton { background-color: #6f4e37; color: white; border-radius: 8px; padding: 6px 10px; font-weight: bold; font-size: 11px; }
             QPushButton:hover { background-color: #5a3e2b; }
         ''')
         bl = QVBoxLayout(self.bubble)
-        start_text = 'Привіт! Натисни 🔑 нижче, щоб вставити ключ Gemini API.' if not get_key() else 'Привіт! Готовий до роботи ☕ Натисни на кружку, щоб сховати меню.'
+        has_key = bool(get_key())
+        start_text = 'Привіт! Готовий до роботи ☕ Натисни на кружку, щоб сховати меню.' if has_key else 'Встав свій ключ Gemini API у поле нижче та натисни «ОК»:'
         self.msg_label = QLabel(start_text)
         self.msg_label.setWordWrap(True)
         bl.addWidget(self.msg_label)
 
+        # Вбудований блок для введення API-ключа (без окремих вікон)
+        self.key_box = QWidget()
+        key_row = QHBoxLayout(self.key_box)
+        key_row.setContentsMargins(0, 0, 0, 0)
+        self.key_input = QLineEdit()
+        self.key_input.setPlaceholderText('Встав AIza...')
+        self.key_input.setText(get_key())
+        key_row.addWidget(self.key_input)
+        b_save_key = QPushButton('ОК')
+        b_save_key.setStyleSheet('background-color: #2e7d32;')
+        b_save_key.clicked.connect(self.save_key)
+        key_row.addWidget(b_save_key)
+        self.key_box.setVisible(not has_key)
+        bl.addWidget(self.key_box)
+
+        # Рядок чату
         row1 = QHBoxLayout()
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText('Запитай або запиши справу...')
@@ -73,13 +89,14 @@ class ThermosAssistant(QWidget):
         row1.addWidget(b_send)
         bl.addLayout(row1)
 
+        # Кнопки керування
         row2 = QHBoxLayout()
         b_scan = QPushButton('👀 Що не так на екрані?')
         b_scan.clicked.connect(self.analyze_screen)
         row2.addWidget(b_scan)
         b_key = QPushButton('🔑')
-        b_key.setToolTip('Вставити API ключ')
-        b_key.clicked.connect(self.set_key)
+        b_key.setToolTip('Показати/сховати поле ключа')
+        b_key.clicked.connect(lambda: self.key_box.setVisible(not self.key_box.isVisible()))
         row2.addWidget(b_key)
         b_close = QPushButton('✖')
         b_close.setStyleSheet('background-color: #a1887f; padding: 6px 8px;')
@@ -90,10 +107,11 @@ class ThermosAssistant(QWidget):
         self.layout.addWidget(self.bubble)
         self.layout.addSpacing(155)
 
-    def set_key(self):
-        text, ok = QInputDialog.getText(self, 'Ключ Gemini API', 'Встав свій ключ (AIza...):', text=get_key())
-        if ok and text.strip():
-            open(KEY_FILE, 'w', encoding='utf-8').write(text.strip())
+    def save_key(self):
+        val = self.key_input.text().strip()
+        if val:
+            open(KEY_FILE, 'w', encoding='utf-8').write(val)
+            self.key_box.setVisible(False)
             self.msg_label.setText('Ключ збережено! Тепер я готовий працювати 🧠☕')
 
     def update_animation(self):
@@ -163,7 +181,8 @@ class ThermosAssistant(QWidget):
     def analyze_screen(self):
         key = get_key()
         if not key:
-            self.set_key()
+            self.key_box.setVisible(True)
+            self.msg_label.setText('Спочатку встав API-ключ у поле нижче 👇')
             return
         self.msg_label.setText('Дивлюся на екран... 🔍☕')
         self.hide()
@@ -181,7 +200,8 @@ class ThermosAssistant(QWidget):
         if not txt: return
         key = get_key()
         if not key:
-            self.set_key()
+            self.key_box.setVisible(True)
+            self.msg_label.setText('Спочатку встав API-ключ у поле нижче 👇')
             return
         self.input_field.clear()
         self.msg_label.setText('Думаю... ☕')
