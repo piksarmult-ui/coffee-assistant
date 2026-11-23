@@ -17,14 +17,14 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 16px;
+      padding: 14px;
       color: #1a1a1a;
     }
     .widget-container {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      max-width: 390px;
+      max-width: 410px;
       width: 100%;
     }
     .bubble {
@@ -32,9 +32,9 @@
       background: #ffffff;
       border: 3px solid #141414;
       border-radius: 22px;
-      padding: 14px;
+      padding: 13px;
       box-shadow: 0 12px 28px rgba(20, 20, 20, 0.14);
-      margin-bottom: 12px;
+      margin-bottom: 10px;
       transition: all 0.25s ease;
     }
     .bubble.hidden {
@@ -53,8 +53,28 @@
       align-items: center;
       margin-bottom: 8px;
       font-weight: 700;
-      font-size: 13px;
+      font-size: 12.5px;
       color: #b5651d;
+      gap: 6px;
+    }
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .pill-btn {
+      background: #f5ebe0;
+      color: #141414;
+      border: 1.5px solid #141414;
+      border-radius: 8px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .pill-btn.active {
+      background: #b5651d;
+      color: #ffffff;
     }
     .msg-box {
       background: #faf6f2;
@@ -63,18 +83,44 @@
       padding: 10px 12px;
       font-size: 13.5px;
       line-height: 1.45;
-      min-height: 90px;
-      max-height: 170px;
+      min-height: 88px;
+      max-height: 175px;
       overflow-y: auto;
       white-space: pre-wrap;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
     .msg-box::-webkit-scrollbar { width: 6px; }
     .msg-box::-webkit-scrollbar-thumb { background: #b5651d; border-radius: 3px; }
-    .row { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+    .presets-row {
+      display: flex;
+      gap: 5px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      margin-bottom: 4px;
+    }
+    .presets-row::-webkit-scrollbar { height: 4px; }
+    .presets-row::-webkit-scrollbar-thumb { background: #d7ccc8; border-radius: 2px; }
+    .preset-chip {
+      background: #fff8f0;
+      color: #5d4037;
+      border: 1.5px solid #d7ccc8;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .preset-chip:hover {
+      background: #f5ebe0;
+      border-color: #b5651d;
+      color: #141414;
+    }
+    .row { display: flex; gap: 6px; margin-bottom: 7px; flex-wrap: wrap; }
     .row:last-child { margin-bottom: 0; }
     input[type="text"] {
       flex: 1;
+      min-width: 140px;
       border: 2px solid #bcaaa4;
       border-radius: 10px;
       padding: 8px 10px;
@@ -82,7 +128,7 @@
       outline: none;
     }
     input:focus { border-color: #b5651d; }
-    button {
+    button.main-btn {
       background: #b5651d;
       color: #ffffff;
       border: 2px solid #141414;
@@ -96,12 +142,20 @@
       justify-content: center;
       gap: 4px;
     }
-    button:hover { background: #965215; }
-    button.btn-gray { background: #757575; }
+    button.main-btn:hover { background: #965215; }
     button.btn-light { background: #f5ebe0; color: #141414; }
     button.btn-light:hover { background: #eadbc8; }
     button.btn-install { background: #2e7d32; color: #ffffff; }
     button.btn-install:hover { background: #1b5e20; }
+    button.btn-recording {
+      background: #d32f2f !important;
+      color: #ffffff !important;
+      animation: pulseRec 1s infinite;
+    }
+    @keyframes pulseRec {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.06); }
+    }
     .tasks-panel {
       display: none;
       background: #fdf9f6;
@@ -131,9 +185,16 @@
       animation: bounce 2s infinite ease-in-out;
       filter: drop-shadow(0 6px 10px rgba(0,0,0,0.18));
     }
+    .character-wrap.thinking {
+      animation: wobble 0.6s infinite ease-in-out;
+    }
     @keyframes bounce {
       0%, 100% { transform: translateY(0); }
       50% { transform: translateY(-4px); }
+    }
+    @keyframes wobble {
+      0%, 100% { transform: rotate(-3deg) translateY(-2px); }
+      50% { transform: rotate(3deg) translateY(-4px); }
     }
   </style>
 </head>
@@ -142,34 +203,50 @@
 <div class="widget-container">
   <div class="bubble" id="bubble">
     <div class="header-bar">
-      <span>☕ Кофі • ШІ-асистент</span>
-      <span id="modelBadge" style="font-size: 11px; color: #757575;">Gemini 3.1 Lite</span>
+      <span>☕ Кофі • <span id="modelBadge" style="font-weight: 500; color: #757575;">3.1 Lite</span></span>
+      <div class="header-controls">
+        <button class="pill-btn" id="pomoBtn" onclick="togglePomodoro()" title="Фокус-таймер 25 хв">⏱️ 25:00</button>
+        <button class="pill-btn" id="ttsBtn" onclick="toggleTTS()" title="Озвучувати відповіді вголос">🔇</button>
+      </div>
     </div>
 
-    <div class="msg-box" id="msgBox">Привіт! Я Кофі ☕ Тепер я пам’ятаю нашу розмову. Про що поспілкуємось?</div>
+    <div class="msg-box" id="msgBox">Привіт! Я Кофі ☕ Я пам’ятаю наші розмови, розумію голос, читаю буфер обміну та стежу за часом відпочинку. Чим допомогти?</div>
 
     <div class="tasks-panel" id="tasksPanel">
       <div class="row" style="margin-bottom: 6px;">
         <input type="text" id="taskInput" placeholder="Нова справа..." onkeydown="if(event.key==='Enter') addTask()" />
-        <button onclick="addTask()">+</button>
+        <button class="main-btn" onclick="addTask()">+</button>
       </div>
       <div id="tasksList"></div>
     </div>
 
-    <div class="row">
-      <input type="text" id="promptInput" placeholder="Напиши запитання..." onkeydown="if(event.key==='Enter') askAI()" />
-      <button onclick="askAI()" title="Надіслати">➤</button>
+    <!-- Швидкі пресети -->
+    <div class="presets-row">
+      <button class="preset-chip" onclick="runPreset('Переклади це на природну англійську (або українську, якщо текст англійською):')">🌐 Переклад</button>
+      <button class="preset-chip" onclick="runPreset('Виправ орфографічні та пунктуаційні помилки в цьому тексті і поверни чистий варіант:')">✍️ Виправ помилки</button>
+      <button class="preset-chip" onclick="runPreset('Перепиши цей текст більш ввічливо та професійно для ділового листування:')">🤝 Ввічливо</button>
+      <button class="preset-chip" onclick="runPreset('Виділи головну суть цього тексту у 3 коротких пунктах:')">⚡ Коротко</button>
     </div>
 
+    <!-- Рядок вводу + мікрофон -->
     <div class="row">
-      <button onclick="analyzeScreen()" style="flex: 1;">👀 Що на екрані?</button>
-      <button class="btn-light" onclick="toggleTasks()" title="Список справ">📋</button>
-      <button class="btn-light" onclick="clearHistory()" title="Очистити пам'ять розмови">🧹</button>
-      <button class="btn-install" id="installBtn" onclick="installPWA()" title="Встановити Кофі як застосунок на ПК чи телефон">📲 Встановити</button>
-      <button class="btn-light" onclick="toggleBubble()" title="Сховати діалог">🔽</button>
+      <input type="text" id="promptInput" placeholder="Запитай або натисни 🎤..." onkeydown="if(event.key==='Enter') askAI()" />
+      <button class="main-btn btn-light" id="micBtn" onclick="toggleVoice()" title="Голосовий ввод">🎤</button>
+      <button class="main-btn" onclick="askAI()" title="Надіслати">➤</button>
+    </div>
+
+    <!-- Панель інструментів -->
+    <div class="row">
+      <button class="main-btn" onclick="analyzeScreen()" style="flex: 1;">👀 Екран</button>
+      <button class="main-btn btn-light" onclick="analyzeClipboard()" title="Пояснити або перекласти скопійований текст">📎 З буфера</button>
+      <button class="main-btn btn-light" onclick="toggleTasks()" title="Список справ">📋</button>
+      <button class="main-btn btn-light" onclick="clearHistory()" title="Очистити пам'ять розмови">🧹</button>
+      <button class="main-btn btn-install" id="installBtn" onclick="installPWA()" title="Встановити як застосунок">📲</button>
+      <button class="main-btn btn-light" onclick="toggleBubble()" title="Сховати діалог">🔽</button>
     </div>
   </div>
 
+  <!-- Персонаж Кофі з емоціями -->
   <div class="character-wrap" id="cupChar" onclick="toggleBubble()" title="Натисни, щоб відкрити або сховати Кофі">
     <svg width="86" height="118" viewBox="0 0 86 118" xmlns="http://www.w3.org/2000/svg">
       <path d="M16 24 L70 24 L64 102 Q43 108 22 102 Z" fill="#ffffff" stroke="#141414" stroke-width="2.8" stroke-linejoin="round"/>
@@ -181,9 +258,11 @@
       <path d="M22 10 Q32 7 42 9" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
       <line x1="17" y1="20" x2="34" y2="20" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
 
-      <path d="M26 42 Q32 38 39 42" fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="round"/>
-      <path d="M47 42 Q54 38 60 42" fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="round"/>
+      <!-- Брови (динамічні) -->
+      <path id="browL" d="M26 42 Q32 38 39 42" fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="round"/>
+      <path id="browR" d="M47 42 Q54 38 60 42" fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="round"/>
 
+      <!-- Вії -->
       <line x1="28" y1="50" x2="23" y2="47" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
       <line x1="27" y1="53" x2="21" y2="51" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
       <line x1="27" y1="56" x2="22" y2="56" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
@@ -192,9 +271,11 @@
       <line x1="59" y1="53" x2="65" y2="51" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
       <line x1="59" y1="56" x2="64" y2="56" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
 
-      <ellipse cx="35.5" cy="57" rx="7.5" ry="11" fill="#ffffff" stroke="#141414" stroke-width="2.2"/>
-      <ellipse cx="50.5" cy="57" rx="7.5" ry="11" fill="#ffffff" stroke="#141414" stroke-width="2.2"/>
+      <!-- Білки очей -->
+      <ellipse id="eyeWhiteL" cx="35.5" cy="57" rx="7.5" ry="11" fill="#ffffff" stroke="#141414" stroke-width="2.2"/>
+      <ellipse id="eyeWhiteR" cx="50.5" cy="57" rx="7.5" ry="11" fill="#ffffff" stroke="#141414" stroke-width="2.2"/>
 
+      <!-- Рухомі зіниці -->
       <g id="pupilL">
         <path d="M35.5 57 L31.5 53 A4.5 6.8 0 1 1 31.5 61 Z" fill="#141414"/>
       </g>
@@ -202,7 +283,8 @@
         <path d="M50.5 57 L46.5 53 A4.5 6.8 0 1 1 46.5 61 Z" fill="#141414"/>
       </g>
 
-      <path d="M31 71 Q43 80 55 71" fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="round"/>
+      <!-- Рот (динамічний під емоцію) -->
+      <path id="mouthPath" d="M31 71 Q43 80 55 71" fill="none" stroke="#141414" stroke-width="2.3" stroke-linecap="round"/>
       <path d="M30 69 Q28 71 30 73" fill="none" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
       <path d="M56 69 Q58 71 56 73" fill="none" stroke="#141414" stroke-width="2.1" stroke-linecap="round"/>
     </svg>
@@ -212,24 +294,63 @@
 <script>
   const PROXY_URL = 'https://gentle-base-e6e8coffee-proxy.piksarmult.workers.dev';
   const TASKS_KEY = 'coffee_ai_tasks_v2';
-  const SYSTEM_RULE = 'Ти дружній офісний ШІ-помічник Кофі. Продовжуй поточний діалог природно українською мовою. НІКОЛИ не вітайся знову ("Привіт", "Я Кофі") — відповідай одразу по суті запитання.';
+  const HISTORY_KEY = 'coffee_ai_chat_history_v1';
+  const SYSTEM_RULE = 'Ти дружній офісний ШІ-помічник Кофі. Продовжуй діалог природно українською мовою. НІКОЛИ не вітайся знову ("Привіт", "Я Кофі") — відповідай одразу по суті запитання.';
 
-  let chatHistory = [];
+  let chatHistory = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
   let deferredPrompt = null;
+  let ttsEnabled = false;
+  let recognition = null;
+  let isRecording = false;
+  let pomoSeconds = 25 * 60;
+  let pomoInterval = null;
   let lastMouseMove = Date.now();
+
   const pupilL = document.getElementById('pupilL');
   const pupilR = document.getElementById('pupilR');
   const cupChar = document.getElementById('cupChar');
   const installBtn = document.getElementById('installBtn');
 
-  // Реєстрація Service Worker для PWA
+  // --- ЕМОЦІЇ СТАКАНЧИКА ---
+  function setEmotion(state) {
+    const browL = document.getElementById('browL');
+    const browR = document.getElementById('browR');
+    const eyeL = document.getElementById('eyeWhiteL');
+    const eyeR = document.getElementById('eyeWhiteR');
+    const mouth = document.getElementById('mouthPath');
+
+    cupChar.classList.remove('thinking');
+
+    if (state === 'thinking') {
+      cupChar.classList.add('thinking');
+      browL.setAttribute('d', 'M26 40 Q32 42 39 43');
+      browR.setAttribute('d', 'M47 43 Q54 42 60 40');
+      eyeL.setAttribute('ry', '7.5');
+      eyeR.setAttribute('ry', '7.5');
+      mouth.setAttribute('d', 'M36 74 Q43 72 50 74');
+    } else if (state === 'error') {
+      browL.setAttribute('d', 'M26 44 Q32 40 39 39');
+      browR.setAttribute('d', 'M47 39 Q54 40 60 44');
+      eyeL.setAttribute('ry', '11');
+      eyeR.setAttribute('ry', '11');
+      mouth.setAttribute('d', 'M32 76 Q43 69 54 76');
+    } else {
+      // normal / happy
+      browL.setAttribute('d', 'M26 42 Q32 38 39 42');
+      browR.setAttribute('d', 'M47 42 Q54 38 60 42');
+      eyeL.setAttribute('ry', '11');
+      eyeR.setAttribute('ry', '11');
+      mouth.setAttribute('d', 'M31 71 Q43 80 55 71');
+    }
+  }
+
+  // --- PWA РЕЄСТРАЦІЯ ---
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     });
   }
 
-  // Перехоплення події встановлення PWA
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
@@ -242,7 +363,6 @@
     document.getElementById('msgBox').textContent = 'Ура! Кофі встановлено як окремий застосунок 🎉';
   });
 
-  // Якщо вже запущено як встановлений PWA-застосунок — ховаємо кнопку встановлення
   if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
     installBtn.style.display = 'none';
   }
@@ -257,10 +377,160 @@
       }
     } else {
       document.getElementById('msgBox').textContent =
-        'Щоб встановити Кофі як застосунок:\n• У Chrome / Edge: натисни іконку монітора зі стрілкою (⊕) у правому кінці адресного рядка або Меню (⋮) → «Встановити Кофі».\n• На iPhone / Safari: натисни «Поділитися» → «На екран Початок».';
+        'Щоб встановити Кофі як застосунок:\n• Chrome / Edge: меню (⋮) → «Встановити сторінку як додаток» або іконка ⊕ в адресному рядку.\n• iPhone / Safari: «Поділитися» → «На екран Початок».';
     }
   }
 
+  // --- ГОЛОСОВИЙ ВВОД (МІКРОФОН) ---
+  function toggleVoice() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      document.getElementById('msgBox').textContent = 'Твій браузер не підтримує розпізнавання голосу. Спробуй Chrome або Edge.';
+      return;
+    }
+
+    if (isRecording && recognition) {
+      recognition.stop();
+      return;
+    }
+
+    recognition = new SpeechRec();
+    recognition.lang = 'uk-UA';
+    recognition.interimResults = false;
+
+    const micBtn = document.getElementById('micBtn');
+    recognition.onstart = () => {
+      isRecording = true;
+      micBtn.classList.add('btn-recording');
+      document.getElementById('msgBox').textContent = 'Слухаю тебе... 🎙️ Говори!';
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      document.getElementById('promptInput').value = transcript;
+      askAI();
+    };
+
+    recognition.onerror = () => {
+      document.getElementById('msgBox').textContent = 'Не вдалося розпізнати голос. Перевір дозвіл на мікрофон.';
+    };
+
+    recognition.onend = () => {
+      isRecording = false;
+      micBtn.classList.remove('btn-recording');
+    };
+
+    recognition.start();
+  }
+
+  // --- ОЗВУЧЕННЯ ВІДПОВІДЕЙ (TTS) ---
+  function toggleTTS() {
+    ttsEnabled = !ttsEnabled;
+    const btn = document.getElementById('ttsBtn');
+    btn.textContent = ttsEnabled ? '🔊' : '🔇';
+    btn.classList.toggle('active', ttsEnabled);
+    if (!ttsEnabled && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  function speakText(text) {
+    if (!ttsEnabled || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const clean = text.replace(/[\u{1F600}-\u{1F6FF}☕⚡👀🎉🧹]/gu, '');
+    const utter = new SpeechSynthesisUtterance(clean);
+    utter.lang = 'uk-UA';
+    utter.rate = 1.05;
+    window.speechSynthesis.speak(utter);
+  }
+
+  // --- POMODORO ТАЙМЕР + ЗВУК ---
+  function playCoffeeChime() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.6);
+    } catch (e) {}
+  }
+
+  function togglePomodoro() {
+    const btn = document.getElementById('pomoBtn');
+    if (pomoInterval) {
+      clearInterval(pomoInterval);
+      pomoInterval = null;
+      pomoSeconds = 25 * 60;
+      btn.textContent = '⏱️ 25:00';
+      btn.classList.remove('active');
+      return;
+    }
+
+    btn.classList.add('active');
+    pomoInterval = setInterval(() => {
+      pomoSeconds--;
+      const m = String(Math.floor(pomoSeconds / 60)).padStart(2, '0');
+      const s = String(pomoSeconds % 60).padStart(2, '0');
+      btn.textContent = `⏱️ ${m}:${s}`;
+
+      if (pomoSeconds <= 0) {
+        clearInterval(pomoInterval);
+        pomoInterval = null;
+        pomoSeconds = 25 * 60;
+        btn.textContent = '⏱️ 25:00';
+        btn.classList.remove('active');
+        playCoffeeChime();
+        document.getElementById('bubble').classList.remove('hidden');
+        const msg = 'Час вийшов! 25 хвилин фокусу позаду ☕ Зроби ковток кави та розімни спину!';
+        document.getElementById('msgBox').textContent = msg;
+        speakText(msg);
+      }
+    }, 1000);
+  }
+
+  // --- БУФЕР ОБМІНУ ТА ПРЕСЕТИ ---
+  async function analyzeClipboard() {
+    try {
+      const clipText = await navigator.clipboard.readText();
+      if (!clipText || !clipText.trim()) {
+        document.getElementById('msgBox').textContent = 'Буфер обміну порожній. Спочатку скопіюй якийсь текст (Ctrl+C)!';
+        return;
+      }
+      document.getElementById('msgBox').textContent = 'Читаю скопійоване... 📎⚡';
+      callGemini(`Ось текст із мого буфера обміну. Коротко поясни його суть або переклади українською, якщо він іноземною:\n\n${clipText.trim()}`);
+    } catch (e) {
+      document.getElementById('msgBox').textContent = 'Браузер не дав доступ до буфера. Встав текст у поле нижче (Ctrl+V).';
+    }
+  }
+
+  async function runPreset(instruction) {
+    const input = document.getElementById('promptInput');
+    let targetText = input.value.trim();
+
+    if (!targetText) {
+      try {
+        targetText = (await navigator.clipboard.readText()).trim();
+      } catch (e) {}
+    }
+
+    if (!targetText) {
+      document.getElementById('msgBox').textContent = 'Напиши текст у поле або скопіюй його (Ctrl+C), а потім натисни швидку кнопку!';
+      return;
+    }
+
+    input.value = '';
+    document.getElementById('msgBox').textContent = 'Обробляю... ⚡';
+    callGemini(`${instruction}\n\n${targetText}`);
+  }
+
+  // --- РУХ ОЧЕЙ ---
   function movePupils(dx, dy) {
     pupilL.setAttribute('transform', `translate(${dx.toFixed(1)}, ${dy.toFixed(1)})`);
     pupilR.setAttribute('transform', `translate(${dx.toFixed(1)}, ${dy.toFixed(1)})`);
@@ -290,25 +560,39 @@
   window.onload = () => {
     localStorage.removeItem('coffee_ai_gemini_key');
     renderTasks();
+    if (chatHistory.length > 0) {
+      const lastModelMsg = [...chatHistory].reverse().find(m => m.role === 'model');
+      if (lastModelMsg?.parts?.[0]?.text) {
+        document.getElementById('msgBox').textContent = lastModelMsg.parts[0].text;
+      }
+    }
   };
 
   function toggleBubble() {
     document.getElementById('bubble').classList.toggle('hidden');
   }
 
+  function saveHistory() {
+    if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(chatHistory));
+  }
+
   function clearHistory() {
     chatHistory = [];
+    localStorage.removeItem(HISTORY_KEY);
+    setEmotion('normal');
     document.getElementById('msgBox').textContent = 'Пам’ять розмови очищено 🧹 Про що поговоримо далі?';
   }
 
   async function callGemini(userText, base64Image = null) {
+    setEmotion('thinking');
     const userParts = [{ text: userText }];
     if (base64Image) {
       userParts.push({ inline_data: { mime_type: 'image/jpeg', data: base64Image } });
     }
 
     chatHistory.push({ role: 'user', parts: [{ text: userText }] });
-    if (chatHistory.length > 14) chatHistory = chatHistory.slice(-14);
+    saveHistory();
 
     const contents = [
       { role: 'user', parts: [{ text: SYSTEM_RULE }] },
@@ -327,16 +611,23 @@
       if (res.ok && data.text) {
         const reply = data.text.replace(/\*\*/g, '').trim();
         chatHistory.push({ role: 'model', parts: [{ text: reply }] });
+        saveHistory();
         if (data.model) {
           document.getElementById('modelBadge').textContent = data.model.replace('-preview', '');
         }
+        setEmotion('normal');
         document.getElementById('msgBox').textContent = reply;
+        speakText(reply);
       } else {
         chatHistory.pop();
+        saveHistory();
+        setEmotion('error');
         document.getElementById('msgBox').textContent = 'Помилка: ' + (data.error || 'Сервер не відповів');
       }
     } catch (e) {
       chatHistory.pop();
+      saveHistory();
+      setEmotion('error');
       document.getElementById('msgBox').textContent = 'Помилка з’єднання: ' + e.message;
     }
   }
@@ -370,6 +661,7 @@
       document.getElementById('msgBox').textContent = 'Швидко дивлюся на екран... ⚡👀';
       await callGemini('Подивись на мій екран: якщо є помилка — коротко вкажи її. Інакше дай 1 коротку пораду (до 2 речень).', base64);
     } catch (e) {
+      setEmotion('normal');
       document.getElementById('msgBox').textContent = 'Перевірку екрана скасовано.';
     }
   }
@@ -408,7 +700,7 @@
     list.innerHTML = tasks.map((t, i) => `
       <div class="task-item ${t.done ? 'done' : ''}">
         <span onclick="toggleTaskDone(${i})">${t.done ? '✅' : '⬜'} ${t.text}</span>
-        <button class="btn-gray" style="padding:2px 6px; font-size:10px;" onclick="removeTask(${i})">✖</button>
+        <button class="main-btn" style="padding:2px 6px; font-size:10px; background:#757575;" onclick="removeTask(${i})">✖</button>
       </div>
     `).join('');
   }
